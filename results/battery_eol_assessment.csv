@@ -1,0 +1,35 @@
+battery_id,valid_cycles,first_capacity_Ah,minimum_capacity_Ah,reaches_1.4Ah,EOL_cycle,usable_for_RUL,exclusion_reason
+B0005,168,1.8565,1.2875,True,125,True,
+B0006,168,2.0353,1.1538,True,109,True,
+B0007,168,1.8911,1.4005,False,,False,"no valid EOL: never reaches a sustained 1.4 Ah crossing (min 1.400 Ah, final SOH 71.6% of rated)"
+B0018,132,1.855,1.3411,True,97,True,
+B0025,28,1.847,1.7678,False,,False,"only 28 valid discharge cycles (< 30) - trajectory too short; no valid EOL: never reaches a sustained 1.4 Ah crossing (min 1.768 Ah, final SOH 88.4% of rated)"
+B0026,28,1.8133,1.3863,True,6,False,"only 28 valid discharge cycles (< 30) - trajectory too short; no valid EOL: never reaches a sustained 1.4 Ah crossing (min 1.386 Ah, final SOH 88.4% of rated)"
+B0027,28,1.8233,1.7701,False,,False,"only 28 valid discharge cycles (< 30) - trajectory too short; no valid EOL: never reaches a sustained 1.4 Ah crossing (min 1.770 Ah, final SOH 88.5% of rated)"
+B0028,28,1.8047,1.7172,False,,False,"only 28 valid discharge cycles (< 30) - trajectory too short; no valid EOL: never reaches a sustained 1.4 Ah crossing (min 1.717 Ah, final SOH 85.9% of rated)"
+B0029,40,1.6975,1.6121,False,,False,"no valid EOL: never reaches a sustained 1.4 Ah crossing (min 1.612 Ah, final SOH 80.6% of rated)"
+B0030,40,1.6561,1.5628,False,,False,"no valid EOL: never reaches a sustained 1.4 Ah crossing (min 1.563 Ah, final SOH 78.1% of rated)"
+B0031,40,1.6667,1.6667,False,,False,"no valid EOL: never reaches a sustained 1.4 Ah crossing (min 1.667 Ah, final SOH 83.4% of rated)"
+B0032,40,1.7049,1.6358,False,,False,"no valid EOL: never reaches a sustained 1.4 Ah crossing (min 1.636 Ah, final SOH 81.8% of rated)"
+B0033,197,0.0684,0.0684,True,1,False,capacity trajectory contains a protocol/regime break (cycles 140-147) - not a single continuous degradation curve
+B0034,197,0.7459,0.7459,True,1,False,"reported EOL (cycle 1) is spurious - it is an artifact cycle, not real degradation; sustained crossing is cycle 76. Usable only after removing the flagged artifact cycles"
+B0036,197,1.002,1.002,True,1,False,"no valid EOL: never reaches a sustained 1.4 Ah crossing (min 1.002 Ah, final SOH 78.0% of rated)"
+B0038,47,0.8981,0.8981,True,1,False,abnormal/non-monotonic capacity trajectory (Spearman rho=0.20)
+B0039,47,0.119,0.119,True,1,False,abnormal/non-monotonic capacity trajectory (Spearman rho=0.14)
+B0040,47,0.6735,0.4258,True,1,False,abnormal/non-monotonic capacity trajectory (Spearman rho=0.09)
+B0041,67,0.0556,0.0441,True,1,False,never healthy: max capacity 1.216 Ah is at/below the 1.4 Ah EOL threshold from cycle 1 (4 C test) - no degradation span to model; abnormal/non-monotonic capacity trajectory (Spearman rho=0.69)
+B0042,111,1.7287,0.0622,True,41,False,"reported EOL (cycle 41) is spurious - it is an artifact cycle, not real degradation; sustained crossing is cycle 103. Usable only after removing the flagged artifact cycles; capacity trajectory contains a protocol/regime break (cycles 41-86) - not a single continuous degradation curve"
+B0043,111,1.7138,0.0565,True,41,False,"reported EOL (cycle 41) is spurious - it is an artifact cycle, not real degradation; sustained crossing is cycle 101. Usable only after removing the flagged artifact cycles; capacity trajectory contains a protocol/regime break (cycles 41-86) - not a single continuous degradation curve"
+B0044,111,1.6865,0.0551,True,41,False,"reported EOL (cycle 41) is spurious - it is an artifact cycle, not real degradation; sustained crossing is cycle 96. Usable only after removing the flagged artifact cycles; capacity trajectory contains a protocol/regime break (cycles 41-86) - not a single continuous degradation curve"
+B0045,70,1.082,0.6069,True,1,False,never healthy: max capacity 1.082 Ah is at/below the 1.4 Ah EOL threshold from cycle 1 (4 C test) - no degradation span to model
+B0046,69,1.7282,1.1237,True,17,True,
+B0047,69,1.6743,1.106,True,10,True,
+B0048,69,1.658,1.1577,True,12,True,
+B0049,24,0.8584,0.6914,True,1,False,only 24 valid discharge cycles (< 30) - trajectory too short
+B0050,20,0.8631,0.0326,True,1,False,only 20 valid discharge cycles (< 30) - trajectory too short
+B0051,24,0.6435,0.6435,True,1,False,only 24 valid discharge cycles (< 30) - trajectory too short
+B0052,4,0.8607,0.8607,True,1,False,only 4 valid discharge cycles (< 30) - trajectory too short
+B0053,55,1.0691,0.9801,True,1,False,never healthy: max capacity 1.154 Ah is at/below the 1.4 Ah EOL threshold from cycle 1 (4 C test) - no degradation span to model
+B0054,102,0.7399,0.7399,True,1,False,never healthy: max capacity 1.167 Ah is at/below the 1.4 Ah EOL threshold from cycle 1 (4 C test) - no degradation span to model
+B0055,102,0.799,0.799,True,1,False,never healthy: max capacity 1.320 Ah is at/below the 1.4 Ah EOL threshold from cycle 1 (4 C test) - no degradation span to model
+B0056,102,0.7853,0.7853,True,1,False,never healthy: max capacity 1.344 Ah is at/below the 1.4 Ah EOL threshold from cycle 1 (4 C test) - no degradation span to model

@@ -1,0 +1,64 @@
+# ---- raw dataset (large, redistributable from NASA - never commit) ----
+data/raw/*
+!data/raw/.gitkeep
+*.mat
+*.zip
+
+# ---- generated plots ----
+# Only the SoH curve is committed. The per-battery and overview plots are
+# regenerable with `python src/make_plots.py`, so they stay out of the repo.
+results/plots/*
+!results/plots/soh_degradation.png
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ---- virtual environments ----
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ---- notebooks ----
+.ipynb_checkpoints/
+
+# ---- editors / IDE ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.claude/
+
+# ---- OS cruft ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- temporary / scratch ----
+tmp/
+temp/
+scratch/
+*.log
+*.tmp
+_mat_extracted/

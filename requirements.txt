@@ -1,0 +1,8 @@
+# Battery Health IoT Project - dependencies
+# Verified working with Python 3.12
+# Lower bounds are the versions this project was developed and tested against.
+
+numpy>=2.0
+scipy>=1.11
+pandas>=2.0
+matplotlib>=3.8
