@@ -62,3 +62,7 @@ scratch/
 *.log
 *.tmp
 _mat_extracted/
+
+# ---- ML models (reproducible from features) ----
+models/*.pkl
+models/*.joblib
