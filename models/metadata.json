@@ -1,0 +1,26 @@
+{
+  "features": [
+    "Voltage_mean",
+    "Voltage_min",
+    "Voltage_max",
+    "Voltage_range",
+    "Current_mean",
+    "Current_std",
+    "Temperature_mean",
+    "Temperature_max",
+    "Temperature_rise",
+    "Cycle_number"
+  ],
+  "n_samples": 468,
+  "batteries": [
+    "B0005",
+    "B0006",
+    "B0018"
+  ],
+  "models": {
+    "soh": "RandomForestRegressor(n_estimators=100, max_depth=10)",
+    "rul_classifier": "RandomForestClassifier(n_estimators=100, max_depth=10)",
+    "rul_regressor": "RandomForestRegressor(n_estimators=100, max_depth=10)"
+  },
+  "random_state": 42
+}
