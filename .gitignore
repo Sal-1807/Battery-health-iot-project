@@ -66,3 +66,19 @@ _mat_extracted/
 # ---- ML models (reproducible from features) ----
 models/*.pkl
 models/*.joblib
+
+# ---- IoT backend / firmware / dashboard ----
+# Runtime SQLite database (transient, recreated on start)
+iot/data/*.db
+iot/data/*.db-wal
+iot/data/*.db-shm
+# ESP32 secrets: only config.example.h is committed
+iot/firmware/**/config.h
+# Frontend build output and dependencies
+node_modules/
+dashboard/dist/
+dashboard/.vite/
+.env
+.env.local
+*.tsbuildinfo
+.pytest_cache/
