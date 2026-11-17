@@ -47,6 +47,10 @@
 #define VALID_EPOCH 1700000000L   // anything earlier means NTP has not synced
 #define BUFFER_SLOTS 60
 #define PAYLOAD_MAX 448
+// A WPA2 join + DHCP commonly takes 3-8 s. Never restart an attempt sooner than this.
+#ifndef WIFI_CONNECT_TIMEOUT_MS
+#define WIFI_CONNECT_TIMEOUT_MS 15000UL
+#endif
 
 Adafruit_INA219 ina219(INA219_ADDR);
 OneWire oneWire(ONE_WIRE_PIN);
@@ -60,7 +64,7 @@ static uint32_t seqNo = 0;
 static unsigned long lastReadMs = 0;
 static unsigned long lastSensorRetryMs = 0;
 static unsigned long wifiNextAttemptMs = 0;
-static unsigned long wifiBackoffMs = 1000;
+static unsigned long wifiBackoffMs = WIFI_CONNECT_TIMEOUT_MS;
 static unsigned long httpBackoffUntilMs = 0;
 static unsigned long httpBackoffMs = 0;
 static bool timeSynced = false;
@@ -139,10 +143,22 @@ static void jsonNum(char *buf, size_t n, const char *key, bool valid, float v, i
 }
 
 // ------------------------------------------------------------------ Wi-Fi
+static const char *wifiStatusName(int st) {
+  switch (st) {
+    case WL_NO_SSID_AVAIL: return "network not found (wrong SSID, out of range, or 5 GHz only)";
+    case WL_CONNECT_FAILED: return "connect failed (wrong password or enterprise/WPA2-Enterprise login)";
+    case WL_CONNECTION_LOST: return "connection lost";
+    case WL_DISCONNECTED: return "disconnected / still trying (no answer from access point)";
+    case WL_IDLE_STATUS: return "idle";
+    default: return "other";
+  }
+}
+
 static void wifiStart() {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  wifiNextAttemptMs = millis() + WIFI_CONNECT_TIMEOUT_MS;  // give the first join time to finish
   logf("WiFi: connecting to \"%s\"...", WIFI_SSID);
 }
 
@@ -151,7 +167,7 @@ static void wifiMaintain() {
   bool connected = WiFi.status() == WL_CONNECTED;
   if (connected && !wasConnected) {
     logf("WiFi: connected, IP %s, RSSI %d dBm", WiFi.localIP().toString().c_str(), WiFi.RSSI());
-    wifiBackoffMs = 1000;
+    wifiBackoffMs = WIFI_CONNECT_TIMEOUT_MS;
     if (!ntpConfigured) {
       configTime(0, 0, NTP_SERVER_1, NTP_SERVER_2);  // UTC, no DST
       ntpConfigured = true;
@@ -159,12 +175,15 @@ static void wifiMaintain() {
     }
   } else if (!connected && wasConnected) {
     logf("WiFi: connection lost");
+    wifiBackoffMs = WIFI_CONNECT_TIMEOUT_MS;
     wifiNextAttemptMs = millis() + wifiBackoffMs;
   }
   wasConnected = connected;
 
   if (!connected && (long)(millis() - wifiNextAttemptMs) >= 0) {
-    logf("WiFi: reconnect attempt (next backoff %lu ms)", wifiBackoffMs);
+    int st = WiFi.status();
+    logf("WiFi: not connected - status %d: %s", st, wifiStatusName(st));
+    logf("WiFi: reconnect attempt (next in %lu ms)", wifiBackoffMs);
     WiFi.disconnect();
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     wifiNextAttemptMs = millis() + wifiBackoffMs;
