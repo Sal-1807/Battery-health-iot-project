@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* Industrial dark theme. Chart series colors are the validated dark-mode
+   categorical slots 1-3 (CVD-checked against the panel surface #111827);
+   status colors are reserved for state and always ship with an icon + label. */
+@theme {
+  --color-page: #0a0f1a;
+  --color-panel: #111827;
+  --color-panel-2: #172033;
+  --color-line: #243049;
+  --color-grid: #1e2940;
+  --color-axis: #3a4763;
+
+  --color-ink: #e6edf6;
+  --color-ink-2: #a9b4c4;
+  --color-ink-3: #7d8899;
+
+  --color-accent: #2dd4bf;
+  --color-accent-strong: #14b8a6;
+
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+
+  --color-good: #0ca30c;
+  --color-warning: #fab219;
+  --color-serious: #ec835a;
+  --color-critical: #d03b3b;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Recharts focus outline off; keyboard focus is shown on our own controls. */
+.recharts-wrapper:focus,
+.recharts-surface:focus {
+  outline: none;
+}
+
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
