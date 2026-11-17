@@ -322,3 +322,30 @@ def test_nasa_and_model_endpoints(client):
     assert client.get("/api/nasa/B9999/cycles").status_code == 404
     st = client.get("/api/system/status").json()
     assert "model" in st and "devices" in st
+
+
+def test_distinct_seq_same_millisecond_both_stored(client):
+    ts = past(5)
+    a = client.post("/api/battery/reading", json=reading(ts=ts, seq=1, boot_id="z")).json()
+    b = client.post("/api/battery/reading", json=reading(ts=ts, seq=2, boot_id="z")).json()
+    assert a["status"] == b["status"] == "stored"
+    # without seq, an identical timestamp still deduplicates
+    c = client.post("/api/battery/reading", json=reading(ts=past(2))).json()
+    d = client.post("/api/battery/reading", json=dict(reading(ts=past(2)), timestamp=c["ts"])).json()
+    assert d["status"] == "duplicate"
+
+
+def test_v1_database_is_migrated(tmp_path, settings):
+    import dataclasses, sqlite3 as sq
+    from iot.backend.db import _SCHEMA_V1
+    path = tmp_path / "old.db"
+    con = sq.connect(path)
+    con.executescript(_SCHEMA_V1)
+    con.execute("INSERT INTO schema_version(version) VALUES (1)")
+    con.commit(); con.close()
+    c = TestClient(create_app(dataclasses.replace(settings, db_path=path)))
+    ts = past(5)
+    assert c.post("/api/battery/reading", json=reading(ts=ts, seq=1, boot_id="m")).json()["status"] == "stored"
+    assert c.post("/api/battery/reading", json=reading(ts=ts, seq=2, boot_id="m")).json()["status"] == "stored"
+    v = sq.connect(path).execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
+    assert v == 2

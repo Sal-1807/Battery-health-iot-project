@@ -43,8 +43,9 @@ Details and the data model: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 │   ├── backend/            FastAPI app (api.py, telemetry.py, cycles.py, features.py,
 │   │                       model_service.py, alerts.py, nasa.py, db.py, config.py)
 │   ├── simulator/          simulate_esp32.py (synthetic telemetry / NASA replay)
+│   ├── bridge/             serial_bridge.py (USB serial → backend, when Wi-Fi is unavailable)
 │   ├── firmware/esp32_battery_monitor/   Arduino sketch + config.example.h
-│   ├── tests/              pytest suite (45 tests)
+│   ├── tests/              pytest suite (53 tests)
 │   └── data/               runtime SQLite database (git-ignored)
 ├── dashboard/              React + Vite + TypeScript + Tailwind + Recharts
 └── docs/
@@ -107,6 +108,13 @@ Copy `iot/firmware/esp32_battery_monitor/config.example.h` to `config.h`, set Wi
 `BACKEND_BASE_URL=http://<PC LAN IP>:8000`, then upload with the Arduino IDE (board
 "ESP32 Dev Module"; libraries Adafruit INA219, OneWire, DallasTemperature).
 Full steps: [docs/HARDWARE_SETUP.md](docs/HARDWARE_SETUP.md) §3–4.
+
+**No usable Wi-Fi?** (e.g. a WPA2-Enterprise campus network) Set `TRANSPORT_WIFI 0` in `config.h`, upload, close the
+Serial Monitor, and forward the readings over USB:
+
+```bash
+python -m iot.bridge.serial_bridge --port COM9
+```
 
 ### 5. Demo without hardware (clearly labelled)
 

@@ -100,3 +100,17 @@ Held-out (LOBO) performance per test battery, from `results/lobo_cv_results.csv`
 3. With the professor, design a *supervised* characterisation setup with proper protection and cutoff (HARDWARE_SETUP.md §5). Only then record real discharges.
 4. Use those discharges to measure the cell's actual capacity (ground truth). Decide whether to adapt the SoH definition or train a cell-specific model. Any retrain must be a separate, reviewed change.
 5. Optional: add auth / HTTPS if the API ever leaves the lab network, and migrate SQLite → PostgreSQL if multiple long-running devices are used.
+
+## 8. Hardware bring-up log (2026-11-17)
+
+Reported by the team from the Serial Monitor:
+
+- **Firmware:** compiles and uploads with ESP32 core 3.3.12, after installing the Adafruit INA219 library.
+- **Sensors:** INA219 and DS18B20 detected (`ok`). The INA219 with no cell reads ≈ 0.888 V and is correctly flagged `cell=NO (floating input)`. DS18B20 reads ≈ 25–30 °C and responds to handling.
+- **Wi-Fi:**
+  - `SRMIST` is **WPA2-EAP (enterprise)**, so the ESP32 cannot join it with an SSID and password (confirmed by the WiFiScan example).
+  - The phone hotspot "Sal" (WPA2, channel 6, −49 dBm) is visible but the join still failed (status 6); the cause is not yet diagnosed.
+  - Wi-Fi is parked; the team is using the USB serial bridge (`TRANSPORT_WIFI 0`).
+- **Bugs found and fixed:**
+  - Wi-Fi retries at 1/2/4 s could abort a join in progress.
+  - Distinct readings within the same millisecond were dropped as duplicates (schema migration v2).

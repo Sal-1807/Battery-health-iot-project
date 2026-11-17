@@ -137,7 +137,7 @@ def ingest(db: Database, s: Settings, models: ModelService, r: ReadingIn,
         if cur.rowcount == 0:
             dup = conn.execute(
                 "SELECT id, ts FROM readings WHERE (device_id=? AND boot_id IS ? AND seq IS ? AND seq IS NOT NULL) "
-                "OR (battery_id=? AND device_id=? AND source=? AND ts_ms=?) LIMIT 1",
+                "OR (seq IS NULL AND battery_id=? AND device_id=? AND source=? AND ts_ms=?) LIMIT 1",
                 (rec["device_id"], rec["boot_id"], rec["seq"], rec["battery_id"], rec["device_id"], rec["source"],
                  rec["ts_ms"])).fetchone()
             return {"status": "duplicate", "reading_id": dup["id"] if dup else None, "ts": rec["ts"],

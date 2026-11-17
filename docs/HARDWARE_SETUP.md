@@ -60,6 +60,29 @@ What the firmware does:
 
 It **only measures**: it never switches a load, never cuts off at low voltage and never controls charging.
 
+## 3a. Without Wi-Fi: USB serial bridge
+
+Use this when the ESP32 cannot join a network. For example, campus Wi-Fi that uses
+**WPA2-Enterprise / EAP** (such as `SRMIST`) needs a per-user login this firmware does not support.
+
+1. In `config.h` set `#define TRANSPORT_WIFI  0` and upload. The Wi-Fi settings are then ignored, and the radio is turned off.
+2. **Close the Arduino IDE Serial Monitor**: only one program can open the COM port.
+3. On the PC, from the repository root, with the backend running:
+   ```bash
+   pip install pyserial
+   python -m iot.bridge.serial_bridge --port COM9
+   ```
+   Use your board's port: Arduino IDE → Tools → Port, or Windows Device Manager → Ports.
+4. The bridge echoes the ESP32 log and forwards each `@BHM {...}` line to `/api/battery/reading`.
+
+How it behaves:
+
+- Timestamps come from the PC clock, because the ESP32 has no NTP without Wi-Fi.
+- If the backend is down, the bridge queues up to 5000 readings and re-sends them in order. Duplicates are ignored server-side via `boot_id` + `seq`.
+- The data is still the ESP32's real sensor data (`source = hardware`). Only the transport differs.
+
+To return to Wi-Fi later, set `TRANSPORT_WIFI 1` and re-upload.
+
 ## 4. Network setup
 
 1. Run the backend on the PC with `--host 0.0.0.0` (README §Quick start).

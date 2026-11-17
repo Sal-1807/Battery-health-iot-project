@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS batteries (
@@ -149,7 +149,16 @@ CREATE TABLE IF NOT EXISTS schema_version (
 );
 """
 
-_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1}
+# v2: the timestamp-based dedup key only applies to readings WITHOUT a seq
+# number. Distinct readings that share a millisecond (e.g. a burst of buffered
+# USB-serial lines stamped on arrival) must not be dropped as duplicates.
+_SCHEMA_V2 = """
+DROP INDEX IF EXISTS ux_readings_ts;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_readings_ts_noseq
+    ON readings(battery_id, device_id, source, ts_ms) WHERE seq IS NULL;
+"""
+
+_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2}
 
 
 class Database:

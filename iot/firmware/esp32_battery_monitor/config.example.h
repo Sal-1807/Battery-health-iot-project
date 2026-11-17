@@ -4,7 +4,15 @@
 // ---------------------------------------------------------------------------
 #pragma once
 
-// ---- Wi-Fi (2.4 GHz only; the ESP32 cannot join 5 GHz networks) ----
+// ---- Transport ----
+// 1 = send over Wi-Fi (HTTP POST to BACKEND_BASE_URL)
+// 0 = print JSON lines over the USB cable; run on the PC:
+//       python -m iot.bridge.serial_bridge --port COM9
+//     (Wi-Fi settings below are then ignored.)
+#define TRANSPORT_WIFI  1
+
+// ---- Wi-Fi (2.4 GHz WPA2/WPA3-Personal only; the ESP32 cannot join 5 GHz
+//      networks or WPA2-Enterprise / EAP networks such as many campus Wi-Fis) ----
 #define WIFI_SSID      "your-network-name"
 #define WIFI_PASSWORD  "your-wifi-password"
 

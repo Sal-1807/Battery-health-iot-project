@@ -22,6 +22,7 @@
  * hardware before a cell is connected to a load.
  *
  * Setup: copy config.example.h to config.h and edit Wi-Fi + backend IP.
+ * Without Wi-Fi: set TRANSPORT_WIFI 0 in config.h and run iot/bridge/serial_bridge.py.
  */
 
 #if __has_include("config.h")
@@ -47,6 +48,12 @@
 #define VALID_EPOCH 1700000000L   // anything earlier means NTP has not synced
 #define BUFFER_SLOTS 60
 #define PAYLOAD_MAX 448
+// Transport: 1 = HTTP over Wi-Fi (default), 0 = JSON lines over USB serial,
+// forwarded to the backend by iot/bridge/serial_bridge.py on the PC.
+#ifndef TRANSPORT_WIFI
+#define TRANSPORT_WIFI 1
+#endif
+#define USB_JSON_PREFIX "@BHM "
 // A WPA2 join + DHCP commonly takes 3-8 s. Never restart an attempt sooner than this.
 #ifndef WIFI_CONNECT_TIMEOUT_MS
 #define WIFI_CONNECT_TIMEOUT_MS 15000UL
@@ -309,7 +316,8 @@ static void takeAndSendReading() {
   snprintf(body + len, sizeof(body) - len,
            ",\"seq\":%lu,\"boot_id\":\"%s\",\"uptime_ms\":%lu,\"rssi_dbm\":%d,\"firmware_version\":\"%s\","
            "\"sensor_status\":{\"ina219\":\"%s\",\"ds18b20\":\"%s\",\"battery_connected\":%s}}",
-           (unsigned long)seqNo, bootId, millis(), WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -127,
+           (unsigned long)seqNo, bootId, millis(),
+           (TRANSPORT_WIFI && WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127,
            FIRMWARE_VERSION, inaStatus, dsStatus, vOk ? (batteryConnected ? "true" : "false") : "null");
   seqNo++;
 
@@ -318,6 +326,14 @@ static void takeAndSendReading() {
                 vOk ? String(loadV, 3).c_str() : "--", iOk ? String(currentA, 4).c_str() : "--",
                 tOk ? String(tempC, 2).c_str() : "--", inaStatus, dsStatus,
                 vOk ? (batteryConnected ? "yes" : "NO (floating input)") : "?", haveTime ? ts : "unsynced");
+
+#if !TRANSPORT_WIFI
+  // USB transport: one machine-readable line per reading; the PC bridge adds
+  // the UTC timestamp and posts it. Human-readable lines above are ignored by it.
+  Serial.print(USB_JSON_PREFIX);
+  Serial.println(body);
+  return;
+#endif
 
   // ---- send (with backoff after transport/server errors)
   if ((long)(millis() - httpBackoffUntilMs) < 0) {
@@ -343,18 +359,28 @@ void setup() {
   delay(300);
   Serial.println();
   logf("ESP32 battery monitor %s  battery=%s device=%s", FIRMWARE_VERSION, BATTERY_ID, DEVICE_ID);
-  logf("backend: %s", BACKEND_BASE_URL);
+#if TRANSPORT_WIFI
+  logf("transport: Wi-Fi -> %s", BACKEND_BASE_URL);
+#else
+  logf("transport: USB serial (run iot/bridge/serial_bridge.py on the PC; close the Serial Monitor first)");
+#endif
   makeBootId();
   logf("boot_id: %s", bootId);
 
   Wire.begin(I2C_SDA, I2C_SCL);
   initIna219();
   initDs18b20();
+#if TRANSPORT_WIFI
   wifiStart();
+#else
+  WiFi.mode(WIFI_OFF);
+#endif
 }
 
 void loop() {
+#if TRANSPORT_WIFI
   wifiMaintain();
+#endif
   if (millis() - lastReadMs >= READ_INTERVAL_MS) {
     lastReadMs = millis();
     takeAndSendReading();
