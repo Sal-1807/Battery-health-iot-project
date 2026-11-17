@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from iot.backend.api import create_app
 from iot.backend.config import Settings
 
-from .conftest import iso, past, reading
+from .conftest import iso, needs_models, past, reading
 
 
 # ------------------------------------------------------------------ basics
@@ -244,6 +244,7 @@ def _discharge(client, battery, start, n, i_a, v0, v1, t0, t1, seq0=0, step_s=10
     return client.post("/api/battery/readings", json={"readings": rows}).json()
 
 
+@needs_models
 def test_resistor_discharge_aggregates_but_prediction_unavailable(client):
     start = datetime.now(timezone.utc) - timedelta(hours=2)
     out = _discharge(client, "HW-1", start, 60, 0.37, 3.95, 2.98, 25.0, 25.6)
@@ -274,6 +275,7 @@ def test_partial_discharge_is_incomplete(client):
     assert closed[0]["prediction"]["status"] == "unavailable"
 
 
+@needs_models
 def test_nasa_like_live_cycle_gets_experimental_prediction(client):
     client.post("/api/battery/reading", json=reading(battery="LAB-2A", ts=past(7200), v=4.19, i=0.0, t=24.0,
                                                      seq=0, boot_id="x"))
@@ -297,6 +299,7 @@ def test_open_segment_not_stored_until_closed(client):
 
 
 # ------------------------------------------------------------------ NASA replay
+@needs_models
 def test_nasa_replay_cycle_in_sample_and_idempotent(client):
     df = pd.read_csv(Settings().features_csv)
     row = df[(df.Battery_ID == "B0005")].iloc[10]

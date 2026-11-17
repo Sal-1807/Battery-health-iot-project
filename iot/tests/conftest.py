@@ -8,6 +8,14 @@ from fastapi.testclient import TestClient
 
 from iot.backend.api import create_app
 from iot.backend.config import Settings
+from iot.backend.model_service import MODEL_FILES
+
+# Trained models are git-ignored; tests that need them skip on a fresh checkout.
+_MODEL_DIR = Settings().model_dir
+needs_models = pytest.mark.skipif(
+    not all((_MODEL_DIR / f).exists() for f in MODEL_FILES.values()),
+    reason="models/*.pkl not generated - run `python src/train_models.py`",
+)
 
 
 @pytest.fixture

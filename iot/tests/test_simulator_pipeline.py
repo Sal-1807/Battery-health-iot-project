@@ -7,6 +7,8 @@ import sqlite3
 
 from iot.simulator import simulate_esp32 as sim
 
+from .conftest import needs_models
+
 
 def _poster(client):
     def post(path, body):
@@ -35,6 +37,7 @@ def test_simulated_telemetry_end_to_end(client, settings):
     assert "temperature_sensor_fault" in types
 
 
+@needs_models
 def test_nasa_replay_end_to_end(client):
     args = argparse.Namespace(battery="B0018", battery_id=None, delay=0.0)
     assert sim.run_nasa_replay(_poster(client), args) == 0
