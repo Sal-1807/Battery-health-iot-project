@@ -1,6 +1,8 @@
 export function fmt(v: number | null | undefined, digits = 2, unit = ""): string {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return `${v.toFixed(digits)}${unit ? ` ${unit}` : ""}`;
+  let txt = v.toFixed(digits);
+  if (/^-0\.?0*$/.test(txt)) txt = txt.slice(1); // noise like -0.0002 must not read as "-0.000"
+  return `${txt}${unit ? ` ${unit}` : ""}`;
 }
 
 export function fmtAge(seconds: number | null | undefined): string {
@@ -33,6 +35,12 @@ export function fmtDuration(s: number | null | undefined): string {
   if (s < 7200) return `${Math.round(s / 60)} min`;
   return `${(s / 3600).toFixed(1)} h`;
 }
+
+export const TIMESTAMP_LABEL: Record<string, string> = {
+  device: "ESP32 clock (NTP)",
+  bridge: "PC clock (USB bridge)",
+  server: "server receive time",
+};
 
 export const SOURCE_LABEL: Record<string, string> = {
   hardware: "Hardware (ESP32)",

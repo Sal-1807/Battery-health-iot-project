@@ -35,7 +35,8 @@ def test_firmware_line_is_accepted_by_backend_end_to_end(client):
     b.handle_line("[  6054] #2 V=0.888 human-readable line")
     assert b.sent == 3 and b.rejected == 0
     latest = client.get("/api/battery/CELL-18650-01/latest").json()["reading"]
-    assert latest["source"] == "hardware" and latest["timestamp_source"] == "device"
+    assert latest["source"] == "hardware" and latest["transport"] == "usb_serial"
+    assert latest["timestamp_source"] == "bridge"       # PC clock, not ESP32 NTP
     assert latest["battery_detected"] is False          # floating INA219 input stays flagged
     assert any(l.startswith("[esp32]") for l in logs)
 

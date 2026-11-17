@@ -350,5 +350,7 @@ def test_v1_database_is_migrated(tmp_path, settings):
     ts = past(5)
     assert c.post("/api/battery/reading", json=reading(ts=ts, seq=1, boot_id="m")).json()["status"] == "stored"
     assert c.post("/api/battery/reading", json=reading(ts=ts, seq=2, boot_id="m")).json()["status"] == "stored"
-    v = sq.connect(path).execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
-    assert v == 2
+    from iot.backend.db import SCHEMA_VERSION
+    con = sq.connect(path)
+    assert con.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == SCHEMA_VERSION
+    assert "transport" in {r[1] for r in con.execute("PRAGMA table_info(readings)")}

@@ -48,6 +48,7 @@ def parse_line(line: str, now_iso: Callable[[], str] = utc_now_iso) -> Optional[
     if not isinstance(reading, dict):
         raise ValueError("payload is not a JSON object")
     reading.setdefault("timestamp", now_iso())
+    reading.setdefault("transport", "usb_serial")
     return reading
 
 

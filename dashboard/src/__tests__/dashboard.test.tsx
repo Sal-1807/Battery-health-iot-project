@@ -113,7 +113,28 @@ describe("App shell", () => {
   });
 });
 
+describe("floating INA219 input", () => {
+  it("does not present the floating voltage as a battery voltage", () => {
+    const b = { ...base, latest_reading: { ...base.latest_reading!, voltage_v: 0.888, battery_detected: false, flags: ["battery_not_detected"] } };
+    render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
+    expect(screen.getByText("No cell")).toBeTruthy();
+    expect(screen.queryByText("0.888")).toBeNull();
+    expect(screen.getByText(/not a battery voltage/)).toBeTruthy();
+  });
+
+  it("labels USB-bridge timestamps as PC clock", () => {
+    const b = { ...base, latest_reading: { ...base.latest_reading!, timestamp_source: "bridge" as const, transport: "usb_serial" as const } };
+    render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
+    expect(screen.getByText(/PC clock \(USB bridge\)/)).toBeTruthy();
+  });
+});
+
 describe("format helpers", () => {
+  it("never prints negative zero", () => {
+    expect(fmt(-0.0002, 3)).toBe("0.000");
+    expect(fmt(-0.0006, 3)).toBe("-0.001");
+  });
+
   it("formats missing values as a dash, never zero", () => {
     expect(fmt(null)).toBe("—");
     expect(fmt(undefined, 1, "V")).toBe("—");

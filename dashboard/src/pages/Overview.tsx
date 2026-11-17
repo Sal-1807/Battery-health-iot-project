@@ -1,7 +1,7 @@
 import { BatteryWarning, Cpu } from "lucide-react";
 import type { PageProps } from "../App";
 import type { BatterySummary, Prediction } from "../lib/api";
-import { ageSeconds, fmt, fmtAge, fmtTime, FLAG_LABEL, SOURCE_LABEL } from "../lib/format";
+import { ageSeconds, fmt, fmtAge, fmtTime, FLAG_LABEL, SOURCE_LABEL, TIMESTAMP_LABEL } from "../lib/format";
 import { Card, ConnectionPill, EmptyState, Loading, Pill, PredictionPill, Provenance, SourceBadge, StatTile } from "../components/ui";
 
 function measuredKind(b: BatterySummary) {
@@ -101,11 +101,15 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
           <div className={`grid grid-cols-2 gap-3 lg:grid-cols-4 ${stale ? "opacity-70" : ""}`}>
             <StatTile
               label="Voltage"
-              value={fmt(r.voltage_v, 3)}
-              unit="V"
-              muted={r.voltage_v == null}
-              tag={<Provenance kind={r.voltage_v == null ? "unavailable" : kind} />}
-              foot={r.battery_detected === false ? "No cell detected on the INA219 input" : "INA219 load voltage (VIN+ to GND)"}
+              value={r.battery_detected === false ? "No cell" : fmt(r.voltage_v, 3)}
+              unit={r.battery_detected === false ? undefined : "V"}
+              muted={r.voltage_v == null || r.battery_detected === false}
+              tag={<Provenance kind={r.voltage_v == null || r.battery_detected === false ? "unavailable" : kind} />}
+              foot={
+                r.battery_detected === false
+                  ? `INA219 input floating (raw ${fmt(r.voltage_v, 3, "V")}) — not a battery voltage`
+                  : "INA219 load voltage (VIN+ to GND)"
+              }
             />
             <StatTile
               label="Current"
@@ -133,7 +137,8 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
             />
           </div>
           <p className="text-xs text-ink-3">
-            Last reading {fmtTime(r.ts, true)} ({fmtAge(age)}) · timestamp from {r.timestamp_source === "device" ? "device (NTP)" : "server"} ·
+            Last reading {fmtTime(r.ts, true)} ({fmtAge(age)}) · time from {TIMESTAMP_LABEL[r.timestamp_source] ?? r.timestamp_source}
+            {r.transport === "usb_serial" ? " · via USB" : r.transport === "wifi" ? " · via Wi-Fi" : ""} ·
             device {r.device_id}
             {r.flags.length > 0 && <> · flags: {r.flags.map((f) => FLAG_LABEL[f] ?? f).join(", ")}</>}
           </p>

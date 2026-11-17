@@ -53,6 +53,9 @@ class ReadingIn(BaseModel):
     firmware_version: Optional[str] = Field(default=None, max_length=32)
     sensor_status: Optional[SensorStatus] = None
     source: ReadingSource = "hardware"
+    transport: Optional[Literal["wifi", "usb_serial"]] = Field(
+        default=None, description="How the reading reached the backend. usb_serial = via iot/bridge/serial_bridge.py, "
+                                  "whose PC clock supplies the timestamp.")
 
     @field_validator("timestamp")
     @classmethod

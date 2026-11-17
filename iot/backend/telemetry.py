@@ -55,7 +55,8 @@ def normalise_reading(r: ReadingIn, s: Settings, now: datetime) -> dict[str, Any
                                      f"(server time {_iso(now)}). Check NTP sync on the device.")
         if now - ts > timedelta(days=s.max_backfill_days):
             raise HTTPException(422, f"timestamp {_iso(ts)} is older than {s.max_backfill_days:g} days")
-        ts_source = "device"
+        # A USB bridge stamps readings with the PC clock, not the ESP32's NTP clock.
+        ts_source = "bridge" if r.transport == "usb_serial" else "device"
     else:
         ts, ts_source = now, "server"
         flags.append("server_timestamp")
@@ -118,6 +119,7 @@ def normalise_reading(r: ReadingIn, s: Settings, now: datetime) -> dict[str, Any
         "ds18b20_status": ds_status,
         "battery_detected": battery_detected,
         "flags": flags,
+        "transport": r.transport,
     }
 
 
@@ -169,7 +171,7 @@ def ingest(db: Database, s: Settings, models: ModelService, r: ReadingIn,
 
 
 # ------------------------------------------------------------------ queries
-READING_FIELDS = ("id, battery_id, device_id, source, ts, timestamp_source, received_at, voltage_v, current_a, "
+READING_FIELDS = ("id, battery_id, device_id, source, transport, ts, timestamp_source, received_at, voltage_v, current_a, "
                   "temperature_c, power_w, power_source, seq, ina219_status, ds18b20_status, battery_detected, flags")
 
 

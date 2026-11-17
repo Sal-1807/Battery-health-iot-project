@@ -47,7 +47,8 @@ export interface Reading {
   source: BatterySource;
   ts: string;
   ts_ms?: number;
-  timestamp_source: "device" | "server";
+  timestamp_source: "device" | "bridge" | "server";
+  transport?: "wifi" | "usb_serial" | null;
   received_at: string;
   voltage_v: number | null;
   voltage_raw_v?: number | null;
