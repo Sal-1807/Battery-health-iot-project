@@ -6,6 +6,7 @@ import { usePoll } from "../lib/hooks";
 import { CELL_STATE_LABEL, fmt, fmtDuration, fmtTime, FLAG_LABEL } from "../lib/format";
 import { TimeChart } from "../components/charts";
 import { minSpanDomain } from "./Live";
+import { END_REASON } from "../components/session";
 import { Card, EmptyState, ErrorBox, Loading, Pill, Segmented, Table } from "../components/ui";
 
 type Preset = "1h" | "24h" | "7d" | "custom";
@@ -34,6 +35,7 @@ export default function HistoryPage({ battery }: PageProps) {
   const chart = usePoll(id && !isReplay ? () => api.history(id, { ...range, max_points: 800 }) : null, 0, [id, range.start, range.end]);
   const table = usePoll(id && !isReplay ? () => api.history(id, { ...range, limit: 2000 }) : null, 0, [id, range.start, range.end]);
   const cycles = usePoll(id ? () => api.cycles(id) : null, 0, [id]);
+  const sessions = usePoll(id && !isReplay ? () => api.sessions(id) : null, 10000, [id]);
 
   const chartData = useMemo(() => (chart.data?.points ?? []).map((p) => ({ ...p, ts_ms: p.ts_ms ?? Date.parse(p.ts) })), [chart.data]);
   const rows = useMemo(() => [...(table.data?.points ?? [])].reverse(), [table.data]);
@@ -115,6 +117,45 @@ export default function HistoryPage({ battery }: PageProps) {
             </>
           )}
         </div>
+      )}
+
+      {!isReplay && (
+        <Card
+          title="Discharge sessions"
+          subtitle="Measured charge and energy per session (newest first). Each figure covers that session only, not the battery's capacity."
+        >
+          {sessions.error && <ErrorBox message={sessions.error.message} />}
+          {sessions.loading ? (
+            <Loading />
+          ) : (
+            <Table
+              empty={!sessions.data?.sessions.length}
+              head={["#", "Start", "Duration", "Discharged (mAh)", "Energy (Wh)", "Avg I (A)", "V start → min", "Gaps", "End", "Type"]}
+            >
+              {(sessions.data?.sessions ?? []).map((x) => (
+                <tr key={x.id}>
+                  <td className="px-3 py-1.5">{x.id}</td>
+                  <td className="px-3 py-1.5">{fmtTime(x.start_ts, true)}</td>
+                  <td className="px-3 py-1.5">{fmtDuration(x.duration_s)}</td>
+                  <td className="px-3 py-1.5 text-ink">
+                    {fmt(x.charge_mah, 1)}
+                    {x.uncertainty_mah > 0.05 && <span className="text-ink-3"> (+≤{fmt(x.uncertainty_mah, 1)})</span>}
+                  </td>
+                  <td className="px-3 py-1.5">{fmt(x.energy_wh, 3)}</td>
+                  <td className="px-3 py-1.5">{fmt(x.mean_current_a, 3)}</td>
+                  <td className="px-3 py-1.5">
+                    {fmt(x.start_voltage_v, 3)} → {fmt(x.min_voltage_v, 3)}
+                  </td>
+                  <td className="px-3 py-1.5">{x.n_gaps ? `${x.n_gaps} (${fmtDuration(x.gap_s)})` : "none"}</td>
+                  <td className="px-3 py-1.5">{x.status === "active" ? <Pill tone="accent">In progress</Pill> : END_REASON[x.end_reason ?? ""]}</td>
+                  <td className="px-3 py-1.5" title={x.interpretation}>
+                    {x.kind === "partial" ? "Partial" : "Full range (unvalidated)"}
+                  </td>
+                </tr>
+              ))}
+            </Table>
+          )}
+        </Card>
       )}
 
       <Card title="Discharge cycles" subtitle="Segments detected from telemetry (or replayed NASA cycles). Only complete cycles are used by the model.">

@@ -96,6 +96,43 @@ export interface Prediction {
   ref_rul?: number | null;
 }
 
+export interface DischargeSession {
+  id: number;
+  battery_id: string;
+  status: "active" | "ended";
+  start_ts: string;
+  end_ts: string | null;
+  end_reason: "load_stopped" | "telemetry_gap" | "telemetry_lost" | null;
+  charge_mah: number;
+  energy_wh: number;
+  uncertainty_mah: number;
+  integrated_s: number;
+  gap_s: number;
+  n_gaps: number;
+  energy_missing_s: number;
+  n_readings: number;
+  n_on: number;
+  start_voltage_v: number | null;
+  rest_voltage_before_v: number | null;
+  end_voltage_v: number | null;
+  min_voltage_v: number | null;
+  peak_current_a: number | null;
+  max_temperature_c: number | null;
+  last_on_ms: number | null;
+  duration_s: number;
+  mean_current_a: number | null;
+  kind: "partial" | "full_range_unvalidated";
+  coverage: {
+    started_from_full_rest_voltage: boolean;
+    reached_cutoff_voltage: boolean;
+    no_telemetry_gaps: boolean;
+    full_charge_v: number;
+    cutoff_v: number;
+  };
+  rated_capacity_mah: number | null;
+  interpretation: string;
+}
+
 export interface BatterySummary {
   battery_id: string;
   label: string | null;
@@ -118,6 +155,8 @@ export interface BatterySummary {
   n_readings: number;
   n_cycles: number;
   n_complete_cycles: number;
+  active_session: DischargeSession | null;
+  last_session: DischargeSession | null;
 }
 
 export interface HistoryPoint {
@@ -311,6 +350,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ confirmed, note: note || null }),
     }),
+  sessions: (id: string) =>
+    request<{ sessions: DischargeSession[]; rated_capacity_mah: number | null; rated_capacity_note: string }>(
+      `/api/battery/${enc(id)}/sessions`,
+    ),
   cycles: (id: string) => request<{ cycles: Cycle[] }>(`/api/battery/${enc(id)}/cycles`),
   predictions: (id: string) => request<{ predictions: Prediction[] }>(`/api/battery/${enc(id)}/predictions`),
   alerts: (p: { battery_id?: string; status?: "active" | "resolved"; limit?: number }) =>

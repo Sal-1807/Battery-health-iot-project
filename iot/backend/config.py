@@ -55,6 +55,18 @@ class Settings:
     # Presence evidence expires after a reading gap this long (cell may have been swapped).
     presence_gap_s: float = float(_env("PRESENCE_GAP_S", "600"))
 
+    # ---- discharge sessions (see sessions.py) ----
+    # A reading counts as "load on" at or above this current (40x the observed
+    # +/-0.5 mA open-input noise). Below it nothing is ever integrated.
+    session_on_a: float = float(_env("SESSION_ON_A", "0.020"))
+    # Session ends after this long without an on-reading.
+    session_stop_hold_s: float = float(_env("SESSION_STOP_HOLD_S", "10"))
+    # A reading gap longer than this ends the session (no current is assumed across it).
+    session_end_gap_s: float = float(_env("SESSION_END_GAP_S", "300"))
+    # Rest voltage at/above which a session is considered to start from full charge
+    # (used only to label a session full-range vs partial; never to compute capacity).
+    full_charge_v: float = float(_env("FULL_CHARGE_V", "4.15"))
+
     # Timestamps further than this in the future are rejected.
     max_future_skew_s: float = float(_env("MAX_FUTURE_SKEW_S", "300"))
     # Timestamps older than this are rejected (firmware buffer is far shorter).

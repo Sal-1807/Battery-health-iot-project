@@ -3,6 +3,7 @@ import { BatteryWarning, Cpu, PlugZap } from "lucide-react";
 import type { PageProps } from "../App";
 import { api, ApiError, VALID_CELL_STATES, type BatterySummary, type Prediction, type Reading } from "../lib/api";
 import { ageSeconds, fmt, fmtAge, fmtTime, FLAG_LABEL, SOURCE_LABEL, TIMESTAMP_LABEL } from "../lib/format";
+import { SessionPanel } from "../components/session";
 import { Card, ConnectionPill, EmptyState, Loading, Pill, PredictionPill, Provenance, SourceBadge, StatTile } from "../components/ui";
 
 function measuredKind(b: BatterySummary) {
@@ -248,6 +249,8 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
           </p>
         </>
       )}
+
+      {b.source !== "nasa_replay" && <SessionPanel b={b} />}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <HealthTiles b={b} />

@@ -172,10 +172,14 @@ def evaluate_prediction(conn: sqlite3.Connection, battery_id: str, status: str, 
         _clear(conn, battery_id, "soh_low")
 
 
-def refresh_offline(db: Database) -> None:
-    """Raise/clear device_offline for hardware/simulation batteries based on last-seen time."""
+def refresh_offline(db: Database, settings=None) -> None:
+    """Raise/clear device_offline for hardware/simulation batteries based on last-seen time,
+    and end discharge sessions whose device has gone silent."""
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     with db.write() as conn:
+        if settings is not None:
+            from .sessions import close_stale_sessions
+            close_stale_sessions(conn, now_ms, settings)
         t = load_thresholds(conn)
         rows = conn.execute(
             "SELECT b.battery_id, MAX(r.id) AS last_id FROM batteries b JOIN readings r ON r.battery_id=b.battery_id "

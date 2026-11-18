@@ -128,6 +128,7 @@ Response: `{"battery_id", "total", "downsampled", "truncated", "points": [...]}`
 | `POST /api/battery/cycle` | Post a cycle-level feature vector directly (NASA replay / manual). Fields: `battery_id`, `source` (`nasa_replay`/`manual`), `cycle_number`, the 9 features in snake_case (`current_mean` negative = discharge), optional `ref_soh`, `ref_rul`, `rated_capacity_ah`. Idempotent on `cycle_number`. |
 | `GET /api/battery/{id}/cycles` | Detected/replayed cycles with features, `complete`, `completeness_notes` |
 | `POST /api/battery/{id}/cycles/aggregate` | Close and store segments now (uses wall-clock time, so a silent device's last segment is closed) |
+| `GET /api/battery/{id}/sessions` | Measured discharge sessions, newest first: `charge_mah`, `energy_wh`, `uncertainty_mah`, `duration_s`, start/end, gaps, `kind` (`partial` / `full_range_unvalidated`), `interpretation`. A session's charge is what flowed **during that session**: not capacity, SoC or SoH. Rules are in `iot/backend/sessions.py`. `/api/batteries` also returns `active_session` and `last_session`. |
 | `GET /api/battery/{id}/predictions` | Prediction history (`include_unavailable=false` to hide refusals). Joined with `ref_soh`/`ref_rul` where known. |
 | `POST /api/battery/{id}/predict` | Re-run the gated model on the latest cycle (e.g. after setting `cycle_count_offset`) |
 

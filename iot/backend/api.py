@@ -24,6 +24,7 @@ from .cycles import aggregate_live_cycles, insert_cycle_features, store_predicti
 from .db import Database, row_to_dict
 from .model_service import ModelService
 from .nasa import NasaData
+from .sessions import SESSION_COLS, session_out
 from .presence import Presence, load_presence, plausible, reclassify_history, save_presence
 from .schemas import BatteryUpsert, CycleIn, PresenceIn, ReadingBatchIn, ReadingIn, Thresholds
 from .telemetry import battery_summary, ensure_battery, history, ingest, parse_iso
@@ -70,7 +71,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.get("/api/system/status", tags=["system"])
     def system_status():
-        refresh_offline(db)
+        refresh_offline(db, s)
         now = datetime.now(timezone.utc)
         with db.read() as conn:
             t = load_thresholds(conn)
@@ -125,16 +126,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # ------------------------------------------------------------ batteries
     @app.get("/api/batteries", tags=["batteries"])
     def list_batteries():
-        refresh_offline(db)
+        refresh_offline(db, s)
         now = datetime.now(timezone.utc)
         with db.read() as conn:
             rows = conn.execute("SELECT * FROM batteries ORDER BY battery_id").fetchall()
-            return {"batteries": [battery_summary(conn, dict(r), now) for r in rows]}
+            return {"batteries": [battery_summary(conn, dict(r), now, s) for r in rows]}
 
     @app.get("/api/battery/{battery_id}", tags=["batteries"])
     def get_battery(battery_id: str):
         with db.read() as conn:
-            return battery_summary(conn, _battery(conn, battery_id), datetime.now(timezone.utc))
+            return battery_summary(conn, _battery(conn, battery_id), datetime.now(timezone.utc), s)
 
     @app.put("/api/battery/{battery_id}", tags=["batteries"])
     def update_battery(battery_id: str, body: BatteryUpsert):
@@ -180,7 +181,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.get("/api/battery/{battery_id}/latest", tags=["telemetry"])
     def latest(battery_id: str):
         with db.read() as conn:
-            summary = battery_summary(conn, _battery(conn, battery_id), datetime.now(timezone.utc))
+            summary = battery_summary(conn, _battery(conn, battery_id), datetime.now(timezone.utc), s)
         if summary["latest_reading"] is None:
             raise HTTPException(404, f"no readings for '{battery_id}'")
         return {"battery_id": battery_id, "connection": summary["connection"], "reading": summary["latest_reading"]}
@@ -225,6 +226,23 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                                             int(datetime.now(timezone.utc).timestamp() * 1000))
         return {"battery_id": battery_id, "cycles_closed": created}
 
+    @app.get("/api/battery/{battery_id}/sessions", tags=["sessions"])
+    def get_sessions(battery_id: str, limit: int = Query(100, ge=1, le=5000)):
+        """Measured discharge sessions, newest first (charge/energy delivered per session).
+
+        A session's charge is what flowed during that session; it is not the cell's
+        capacity, state of charge or state of health.
+        """
+        refresh_offline(db, s)
+        with db.read() as conn:
+            b = _battery(conn, battery_id)
+            rows = conn.execute(f"SELECT {SESSION_COLS} FROM discharge_sessions WHERE battery_id=? "
+                                f"ORDER BY id DESC LIMIT ?", (battery_id, limit)).fetchall()
+        return {"battery_id": battery_id,
+                "rated_capacity_mah": b["rated_capacity_ah"] * 1000 if b.get("rated_capacity_ah") else None,
+                "rated_capacity_note": "Manufacturer label rating, not a measurement.",
+                "sessions": [session_out(r, s, b.get("cutoff_voltage_v"), b.get("rated_capacity_ah")) for r in rows]}
+
     @app.get("/api/battery/{battery_id}/predictions", tags=["predictions"])
     def get_predictions(battery_id: str, limit: int = Query(500, ge=1, le=10000),
                         include_unavailable: bool = True):
@@ -253,7 +271,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.get("/api/alerts", tags=["alerts"])
     def list_alerts(battery_id: Optional[str] = None, status: Optional[Literal["active", "resolved"]] = None,
                     limit: int = Query(200, ge=1, le=5000)):
-        refresh_offline(db)
+        refresh_offline(db, s)
         where, args = [], []
         if battery_id:
             where.append("battery_id=?"); args.append(battery_id)

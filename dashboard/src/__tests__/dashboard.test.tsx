@@ -4,7 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import Overview from "../pages/Overview";
 import App from "../App";
-import type { BatterySummary } from "../lib/api";
+import type { BatterySummary, DischargeSession } from "../lib/api";
 import { fmt, fmtAge } from "../lib/format";
 
 beforeAll(() => {
@@ -53,6 +53,8 @@ const base: BatterySummary = {
   n_readings: 10,
   n_cycles: 1,
   n_complete_cycles: 1,
+  active_session: null,
+  last_session: null,
 };
 
 describe("Overview", () => {
@@ -177,5 +179,44 @@ describe("format helpers", () => {
     expect(fmt(0, 1, "V")).toBe("0.0 V");
     expect(fmtAge(null)).toBe("never");
     expect(fmtAge(90)).toBe("2 min ago");
+  });
+});
+
+const session: DischargeSession = {
+  id: 3, battery_id: "CELL-1", status: "active", start_ts: now, end_ts: null, end_reason: null,
+  charge_mah: 123.456, energy_wh: 0.4567, uncertainty_mah: 0.2, integrated_s: 1200, gap_s: 0, n_gaps: 0,
+  energy_missing_s: 0, n_readings: 600, n_on: 600, start_voltage_v: 3.85, rest_voltage_before_v: 3.95,
+  end_voltage_v: 3.62, min_voltage_v: 3.61, peak_current_a: 0.38, max_temperature_c: 26.4, last_on_ms: Date.now(),
+  duration_s: 1200, mean_current_a: 0.370, kind: "partial",
+  coverage: { started_from_full_rest_voltage: false, reached_cutoff_voltage: false, no_telemetry_gaps: true, full_charge_v: 4.15, cutoff_v: 3 },
+  rated_capacity_mah: 3000, interpretation: "Charge delivered during this session only.",
+};
+
+describe("discharge session panel", () => {
+  it("shows measured session charge and energy, distinct from capacity", () => {
+    const b = { ...base, active_session: session, last_session: session };
+    render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
+    expect(screen.getByText("In progress")).toBeTruthy();
+    expect(screen.getByText("123.5")).toBeTruthy();            // mAh
+    expect(screen.getByText("0.457")).toBeTruthy();            // Wh
+    expect(screen.getByText(/Discharged charge ≠ battery capacity/)).toBeTruthy();
+    expect(screen.getByText("3000 mAh")).toBeTruthy();         // label rating shown as such
+    expect(screen.getByText(/manufacturer rating, not measured/)).toBeTruthy();
+    expect(screen.queryByText(/4\.1 ?%/)).toBeNull();          // 123.5/3000 never shown as a percentage
+    // health stays unavailable: a session is not a health measurement
+    expect(screen.getAllByText("Unavailable").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("keeps the last session after discharge stops", () => {
+    const ended = { ...session, status: "ended" as const, end_ts: now, end_reason: "load_stopped" as const };
+    const b = { ...base, active_session: null, last_session: ended };
+    render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
+    expect(screen.getByText(/Last session · load stopped/)).toBeTruthy();
+    expect(screen.getByText("123.5")).toBeTruthy();
+  });
+
+  it("explains how a session starts when none exists", () => {
+    render(<Overview battery={base} batteries={[base]} batteriesLoading={false} />);
+    expect(screen.getByText(/No discharge recorded/)).toBeTruthy();
   });
 });

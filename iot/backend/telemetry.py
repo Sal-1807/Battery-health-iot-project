@@ -14,6 +14,7 @@ from .config import Settings
 from .cycles import LIVE_SOURCE, aggregate_live_cycles
 from .db import Database, row_to_dict
 from .model_service import ModelService
+from .sessions import SESSION_COLS, session_out, update_session
 from .presence import VALID_STATES, battery_detected_for, classify, load_presence, save_presence
 from .schemas import ReadingIn
 
@@ -127,8 +128,8 @@ def ingest(db: Database, s: Settings, models: ModelService, r: ReadingIn,
     rec = normalise_reading(r, s, now)
     with db.write() as conn:
         ensure_battery(conn, rec["battery_id"], rec["source"])
-        prev = conn.execute("SELECT ts_ms, current_a FROM readings WHERE battery_id=? ORDER BY ts_ms DESC LIMIT 1",
-                            (rec["battery_id"],)).fetchone()
+        prev = conn.execute("SELECT ts_ms, current_a, voltage_v, power_w, temperature_c FROM readings "
+                            "WHERE battery_id=? ORDER BY ts_ms DESC LIMIT 1", (rec["battery_id"],)).fetchone()
         presence = load_presence(conn, rec["battery_id"])
         state, new_presence, events = classify(rec, dict(prev) if prev else None, presence, s)
         rec["cell_state"] = state
@@ -164,6 +165,7 @@ def ingest(db: Database, s: Settings, models: ModelService, r: ReadingIn,
              _ms(now), r.sensor_status.model_dump_json() if r.sensor_status else None))
 
         evaluate_reading(conn, rec, events)
+        session_event = update_session(conn, rec["battery_id"], rec, dict(prev) if prev else None, s)
 
         # Only scan for closed discharge segments on a transition (load stopped,
         # reading gap), not on every sample of a long discharge.
@@ -175,7 +177,7 @@ def ingest(db: Database, s: Settings, models: ModelService, r: ReadingIn,
 
     return {"status": "stored", "reading_id": reading_id, "ts": rec["ts"],
             "timestamp_source": rec["timestamp_source"], "cell_state": rec["cell_state"],
-            "flags": rec["flags"], "cycles_closed": closed}
+            "flags": rec["flags"], "cycles_closed": closed, "session_event": session_event}
 
 
 # ------------------------------------------------------------------ queries
@@ -198,7 +200,8 @@ def connection_state(last_received_at: Optional[str], offline_after_s: float, no
     return {"state": state, "age_s": round(age, 1)}
 
 
-def battery_summary(conn: sqlite3.Connection, b: dict, now: datetime) -> dict:
+def battery_summary(conn: sqlite3.Connection, b: dict, now: datetime, s: Optional[Settings] = None) -> dict:
+    s = s or Settings()
     t = load_thresholds(conn)
     last = conn.execute(f"SELECT {READING_FIELDS} FROM readings WHERE battery_id=? ORDER BY ts_ms DESC LIMIT 1",
                         (b["battery_id"],)).fetchone()
@@ -214,6 +217,9 @@ def battery_summary(conn: sqlite3.Connection, b: dict, now: datetime) -> dict:
     n_cyc = conn.execute("SELECT COUNT(*) AS n, SUM(complete) AS c FROM cycles WHERE battery_id=?",
                          (b["battery_id"],)).fetchone()
     pj = ("reasons", "warnings", "out_of_range", "input_features")
+    sess = conn.execute(f"SELECT {SESSION_COLS} FROM discharge_sessions WHERE battery_id=? ORDER BY id DESC LIMIT 1",
+                        (b["battery_id"],)).fetchone()
+    session = session_out(sess, s, b.get("cutoff_voltage_v"), b.get("rated_capacity_ah")) if sess else None
     return {
         **b,
         "connection": connection_state(last_rx, t.offline_after_s, now) if b["source"] != "nasa_replay"
@@ -225,6 +231,8 @@ def battery_summary(conn: sqlite3.Connection, b: dict, now: datetime) -> dict:
         "n_readings": n_read,
         "n_cycles": n_cyc["n"],
         "n_complete_cycles": n_cyc["c"] or 0,
+        "active_session": session if session and session["status"] == "active" else None,
+        "last_session": session,
     }
 
 

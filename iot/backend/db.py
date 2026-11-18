@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS batteries (
@@ -176,7 +176,43 @@ ALTER TABLE alerts ADD COLUMN resolution_note TEXT;
 CREATE INDEX IF NOT EXISTS ix_readings_battery_rx ON readings(battery_id, received_at);
 """
 
-_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4}
+# v5: measured discharge sessions (sessions.py)
+_SCHEMA_V5 = """
+CREATE TABLE IF NOT EXISTS discharge_sessions (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    battery_id            TEXT NOT NULL,
+    status                TEXT NOT NULL,          -- active | ended
+    start_ts              TEXT NOT NULL,
+    start_ms              INTEGER NOT NULL,
+    end_ts                TEXT,
+    end_ms                INTEGER,                -- last on-reading of the session
+    last_ms               INTEGER NOT NULL,       -- last reading processed
+    end_reason            TEXT,                   -- load_stopped | telemetry_gap | telemetry_lost
+    charge_mah            REAL NOT NULL DEFAULT 0,
+    energy_wh             REAL NOT NULL DEFAULT 0,
+    uncertainty_mah       REAL NOT NULL DEFAULT 0, -- max charge in on/off transition intervals (not integrated)
+    integrated_s          REAL NOT NULL DEFAULT 0,
+    gap_s                 REAL NOT NULL DEFAULT 0,
+    n_gaps                INTEGER NOT NULL DEFAULT 0,
+    energy_missing_s      REAL NOT NULL DEFAULT 0,
+    n_readings            INTEGER NOT NULL DEFAULT 0,
+    n_on                  INTEGER NOT NULL DEFAULT 0,
+    start_voltage_v       REAL,
+    rest_voltage_before_v REAL,
+    end_voltage_v         REAL,
+    min_voltage_v         REAL,
+    peak_current_a        REAL,
+    max_temperature_c     REAL,
+    last_current_a        REAL,
+    last_power_w          REAL,
+    last_on               INTEGER,
+    last_on_ms            INTEGER,
+    created_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_sessions_battery ON discharge_sessions(battery_id, id);
+"""
+
+_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4, 5: _SCHEMA_V5}
 
 
 class Database:

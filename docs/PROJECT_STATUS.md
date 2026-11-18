@@ -132,3 +132,14 @@ Reported by the team from the Serial Monitor:
 - A floating input and a deeply discharged cell (below 2.0 V at rest) remain indistinguishable with the current hardware.
 - A resting, unconfirmed cell gets no voltage alerts.
 - Hardware options that would improve this are listed in HARDWARE_SETUP.md §2a.
+
+## 10. Measured discharge sessions — added 2026-11-18
+
+- **What is measured:** live mAh and Wh, from trapezoidal integration of measured current and power.
+- **When it integrates:** only between consecutive on-readings (≥ 20 mA) at most 60 s apart.
+- **What is never counted:** near-zero noise and charging current.
+- **Load on/off moments:** not integrated; the unknown share is bounded in `uncertainty_mah`.
+- **Gaps:** gaps over 60 s are recorded and never filled; gaps over 5 min end the session.
+- **History:** sessions persist after the load stops, and the next session starts from 0.
+- **Interpretation:** a session's charge is not the battery's capacity, and SoH/RUL are not derived from it.
+- **Unchanged:** protection thresholds; no discharge control was added.
