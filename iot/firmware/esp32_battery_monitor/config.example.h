@@ -39,9 +39,11 @@
 //   1 = 32 V / 1 A   (finer resolution, enough for a 10 ohm load at 4.2 V = 0.42 A)
 //   2 = 16 V / 400 mA (finest; CLIPS above 0.4 A - do not use with a 10 ohm load at full charge)
 #define INA219_CALIBRATION  1
-// Below this input voltage the INA219 is considered to have no cell attached
-// (floating/disconnected input). Such readings are flagged, not used as battery data.
-#define BATTERY_DETECT_MIN_V  1.0f
+// Cell presence is NOT decided on the ESP32. With no cell attached the INA219
+// input floats (0.72-1.14 V was observed), and a resting cell draws ~0 A just
+// like an open input, so no voltage threshold can prove a cell is present.
+// The backend decides from sustained current or an operator confirmation.
+// (BATTERY_DETECT_MIN_V from older config.h files is now ignored.)
 
 // ---- DS18B20 ----
 #define ONE_WIRE_PIN  4

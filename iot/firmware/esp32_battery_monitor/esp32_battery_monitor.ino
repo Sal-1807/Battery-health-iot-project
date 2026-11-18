@@ -54,6 +54,16 @@
 #define TRANSPORT_WIFI 1
 #endif
 #define USB_JSON_PREFIX "@BHM "
+// Serial-log hints only (never sent as a presence claim; see takeAndSendReading).
+#ifndef CELL_HINT_MIN_V
+#define CELL_HINT_MIN_V 2.0f
+#endif
+#ifndef CELL_HINT_MAX_V
+#define CELL_HINT_MAX_V 4.5f
+#endif
+#ifndef CELL_HINT_CURRENT_A
+#define CELL_HINT_CURRENT_A 0.010f
+#endif
 // A WPA2 join + DHCP commonly takes 3-8 s. Never restart an attempt sooner than this.
 #ifndef WIFI_CONNECT_TIMEOUT_MS
 #define WIFI_CONNECT_TIMEOUT_MS 15000UL
@@ -277,8 +287,17 @@ static void takeAndSendReading() {
       vOk = iOk = pOk = true;
     }
   }
-  // A floating / unconnected INA219 input reads near 0 V: report it, but flag it.
-  bool batteryConnected = vOk && loadV >= BATTERY_DETECT_MIN_V;
+  // The INA219 cannot tell an open (floating) input from a resting cell: both
+  // show ~0 A, and the open input can float to ~0.7-1.1 V or more. The firmware
+  // therefore makes NO presence claim (battery_connected is sent as null); the
+  // backend decides from sustained current or an operator confirmation.
+  // The hint below is for the Serial log only.
+  const char *inputHint = "?";
+  if (vOk && iOk) {
+    if (fabsf(currentA) >= CELL_HINT_CURRENT_A) inputHint = "current flowing";
+    else if (loadV < CELL_HINT_MIN_V || loadV > CELL_HINT_MAX_V) inputHint = "outside Li-ion range (no cell / floating)";
+    else inputHint = "in Li-ion range, unverified at rest";
+  }
 
   // ---- DS18B20
   const char *dsStatus = "not_found";
@@ -318,14 +337,14 @@ static void takeAndSendReading() {
            "\"sensor_status\":{\"ina219\":\"%s\",\"ds18b20\":\"%s\",\"battery_connected\":%s}}",
            (unsigned long)seqNo, bootId, millis(),
            (TRANSPORT_WIFI && WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -127,
-           FIRMWARE_VERSION, inaStatus, dsStatus, vOk ? (batteryConnected ? "true" : "false") : "null");
+           FIRMWARE_VERSION, inaStatus, dsStatus, "null");
   seqNo++;
 
-  Serial.printf("[%10lu] #%lu V=%s I=%s T=%s | INA219=%s DS18B20=%s cell=%s time=%s\n", millis(),
+  Serial.printf("[%10lu] #%lu V=%s I=%s T=%s | INA219=%s DS18B20=%s input=%s time=%s\n", millis(),
                 (unsigned long)(seqNo - 1),
                 vOk ? String(loadV, 3).c_str() : "--", iOk ? String(currentA, 4).c_str() : "--",
                 tOk ? String(tempC, 2).c_str() : "--", inaStatus, dsStatus,
-                vOk ? (batteryConnected ? "yes" : "NO (floating input)") : "?", haveTime ? ts : "unsynced");
+                inputHint, haveTime ? ts : "unsynced");
 
 #if !TRANSPORT_WIFI
   // USB transport: one machine-readable line per reading; the PC bridge adds

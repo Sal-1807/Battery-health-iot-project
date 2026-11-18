@@ -3,7 +3,7 @@ import { Download } from "lucide-react";
 import type { PageProps } from "../App";
 import { api } from "../lib/api";
 import { usePoll } from "../lib/hooks";
-import { fmt, fmtDuration, fmtTime, FLAG_LABEL } from "../lib/format";
+import { CELL_STATE_LABEL, fmt, fmtDuration, fmtTime, FLAG_LABEL } from "../lib/format";
 import { TimeChart } from "../components/charts";
 import { minSpanDomain } from "./Live";
 import { Card, EmptyState, ErrorBox, Loading, Pill, Segmented, Table } from "../components/ui";
@@ -103,7 +103,10 @@ export default function HistoryPage({ battery }: PageProps) {
             </div>
           ) : (
             <>
-              <Card title="Voltage (V)" subtitle={chart.data?.downsampled ? `Averaged into ${chart.data.bucket_s?.toFixed(0)} s buckets` : undefined}>
+              <Card
+                title="Voltage (V)"
+                subtitle={`Verified cell readings only${chart.data?.downsampled ? ` · averaged into ${chart.data.bucket_s?.toFixed(0)} s buckets` : ""}`}
+              >
                 <TimeChart data={chartData} unit="V" withDate series={[{ key: "voltage_v", label: "Voltage", color: "var(--color-series-1)", digits: 3 }]} />
               </Card>
               <Card title="Temperature (°C)" subtitle={chart.data?.downsampled ? `Averaged into ${chart.data.bucket_s?.toFixed(0)} s buckets` : undefined}>
@@ -184,7 +187,17 @@ export default function HistoryPage({ battery }: PageProps) {
                 <tr key={`${p.ts}-${i}`}>
                   <td className="px-3 py-1.5">{fmtTime(p.ts, true)}</td>
                   <td className="px-3 py-1.5">{p.device_id}</td>
-                  <td className="px-3 py-1.5">{fmt(p.voltage_v, 3)}</td>
+                  <td className="px-3 py-1.5">
+                    {p.voltage_v != null ? (
+                      fmt(p.voltage_v, 3)
+                    ) : p.voltage_raw_v != null ? (
+                      <span className="text-ink-3" title="Raw INA219 value, not a verified cell voltage">
+                        ({fmt(p.voltage_raw_v, 3)}) {CELL_STATE_LABEL[p.cell_state ?? ""] ?? ""}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="px-3 py-1.5">{fmt(p.current_a, 4)}</td>
                   <td className="px-3 py-1.5">{fmt(p.temperature_c, 2)}</td>
                   <td className="px-3 py-1.5">{fmt(p.power_w, 3)}</td>

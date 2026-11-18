@@ -142,7 +142,15 @@ export default function Alerts({ battery }: PageProps) {
                   ) : null}
                 </td>
                 <td className="px-3 py-2">{a.battery_id}</td>
-                <td className="min-w-[14rem] max-w-sm whitespace-normal px-3 py-2">{a.message}</td>
+                <td className="min-w-[14rem] max-w-sm whitespace-normal px-3 py-2">
+                  {a.message}
+                  {a.classification === "invalid_measurement" && (
+                    <span className="mt-1 block">
+                      <Pill tone="neutral">Reclassified: invalid measurement</Pill>
+                      {a.resolution_note && <span className="mt-0.5 block text-ink-3">{a.resolution_note}</span>}
+                    </span>
+                  )}
+                </td>
                 <td className="whitespace-nowrap px-3 py-2">
                   {a.value != null ? `${a.value.toFixed(a.unit === "V" ? 3 : 1)} ${a.unit ?? ""}` : "—"}
                 </td>

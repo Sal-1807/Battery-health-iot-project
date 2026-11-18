@@ -39,6 +39,9 @@ export const apiUrl = (path: string) => BASE + path;
 export type BatterySource = "hardware" | "simulation" | "nasa_replay";
 export type ConnState = "online" | "stale" | "offline" | "never_seen" | "not_applicable";
 export type PredictionStatus = "unavailable" | "experimental" | "nasa_in_sample";
+/** Backend measurement-validity state (iot/backend/presence.py). */
+export type CellState = "no_cell" | "unverified" | "verified_current" | "confirmed" | "unknown";
+export const VALID_CELL_STATES: CellState[] = ["verified_current", "confirmed"];
 
 export interface Reading {
   id: number;
@@ -59,6 +62,7 @@ export interface Reading {
   ina219_status: string | null;
   ds18b20_status: string | null;
   battery_detected: boolean | null;
+  cell_state: CellState | null;
   flags: string[];
 }
 
@@ -101,6 +105,9 @@ export interface BatterySummary {
   cutoff_voltage_v: number | null;
   cycle_count_offset: number | null;
   source: BatterySource;
+  presence_evidence: "current" | "operator" | null;
+  presence_since: string | null;
+  presence_note: string | null;
   notes: string | null;
   created_at: string;
   connection: { state: ConnState; age_s: number | null };
@@ -121,6 +128,8 @@ export interface HistoryPoint {
   temperature_c: number | null;
   power_w: number | null;
   battery_detected?: boolean | null;
+  cell_state?: CellState | null;
+  voltage_raw_v?: number | null;
   flags?: string[];
   device_id?: string;
   source?: string;
@@ -175,6 +184,8 @@ export interface Alert {
   resolved_at: string | null;
   occurrences: number;
   experimental: number;
+  classification: "valid" | "invalid_measurement" | null;
+  resolution_note: string | null;
 }
 
 export interface Thresholds {
@@ -243,6 +254,7 @@ export interface Device {
   age_s: number | null;
   state: ConnState;
   data_origin: BatterySource | null;
+  cell_state: CellState | null;
 }
 
 export interface SystemStatus {
@@ -294,6 +306,11 @@ export const api = {
     request<HistoryResponse>(`/api/battery/${enc(id)}/history${q(p)}`),
   historyCsvUrl: (id: string, p: { start?: string; end?: string; limit?: number }) =>
     apiUrl(`/api/battery/${enc(id)}/history${q({ ...p, format: "csv" })}`),
+  setPresence: (id: string, confirmed: boolean, note?: string) =>
+    request<{ presence: { evidence: string | null } }>(`/api/battery/${enc(id)}/presence`, {
+      method: "POST",
+      body: JSON.stringify({ confirmed, note: note || null }),
+    }),
   cycles: (id: string) => request<{ cycles: Cycle[] }>(`/api/battery/${enc(id)}/cycles`),
   predictions: (id: string) => request<{ predictions: Prediction[] }>(`/api/battery/${enc(id)}/predictions`),
   alerts: (p: { battery_id?: string; status?: "active" | "resolved"; limit?: number }) =>

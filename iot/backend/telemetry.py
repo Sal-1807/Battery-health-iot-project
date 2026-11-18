@@ -14,6 +14,7 @@ from .config import Settings
 from .cycles import LIVE_SOURCE, aggregate_live_cycles
 from .db import Database, row_to_dict
 from .model_service import ModelService
+from .presence import VALID_STATES, battery_detected_for, classify, load_presence, save_presence
 from .schemas import ReadingIn
 
 DS18B20_DISCONNECTED_C = -127.0
@@ -82,13 +83,9 @@ def normalise_reading(r: ReadingIn, s: Settings, now: datetime) -> dict[str, Any
         if "temperature_sensor_fault" not in flags:
             flags.append("temperature_sensor_fault")
 
-    battery_detected: Optional[int] = None
-    if voltage is not None:
-        battery_detected = int(voltage >= s.battery_detect_min_v)
-    if st is not None and st.battery_connected is False:
-        battery_detected = 0
-    if battery_detected == 0:
-        flags.append("battery_not_detected")
+    # Cell presence is NOT decided here: it needs the previous reading and the
+    # battery's presence record (see presence.classify, called in ingest()).
+    # sensor_status.battery_connected from firmware is deliberately ignored.
 
     power, power_source = r.power_w, None
     if power is not None:
@@ -117,7 +114,8 @@ def normalise_reading(r: ReadingIn, s: Settings, now: datetime) -> dict[str, Any
         "boot_id": r.boot_id,
         "ina219_status": ina_status,
         "ds18b20_status": ds_status,
-        "battery_detected": battery_detected,
+        "battery_detected": None,
+        "cell_state": None,
         "flags": flags,
         "transport": r.transport,
     }
@@ -131,6 +129,14 @@ def ingest(db: Database, s: Settings, models: ModelService, r: ReadingIn,
         ensure_battery(conn, rec["battery_id"], rec["source"])
         prev = conn.execute("SELECT ts_ms, current_a FROM readings WHERE battery_id=? ORDER BY ts_ms DESC LIMIT 1",
                             (rec["battery_id"],)).fetchone()
+        presence = load_presence(conn, rec["battery_id"])
+        state, new_presence, events = classify(rec, dict(prev) if prev else None, presence, s)
+        rec["cell_state"] = state
+        rec["battery_detected"] = battery_detected_for(state)
+        if state == "no_cell":
+            rec["flags"].append("battery_not_detected")
+        elif state == "unverified":
+            rec["flags"].append("cell_unverified")
         cols = list(rec)
         values = [json.dumps(rec[c]) if c == "flags" else rec[c] for c in cols]
         cur = conn.execute(
@@ -145,6 +151,7 @@ def ingest(db: Database, s: Settings, models: ModelService, r: ReadingIn,
             return {"status": "duplicate", "reading_id": dup["id"] if dup else None, "ts": rec["ts"],
                     "timestamp_source": rec["timestamp_source"], "flags": rec["flags"], "cycles_closed": []}
         reading_id = cur.lastrowid
+        save_presence(conn, rec["battery_id"], new_presence)
 
         conn.execute(
             "INSERT INTO devices(device_id, battery_id, firmware_version, boot_id, last_rssi_dbm, last_seen_at, "
@@ -156,7 +163,7 @@ def ingest(db: Database, s: Settings, models: ModelService, r: ReadingIn,
             (rec["device_id"], rec["battery_id"], r.firmware_version, r.boot_id, r.rssi_dbm, rec["received_at"],
              _ms(now), r.sensor_status.model_dump_json() if r.sensor_status else None))
 
-        evaluate_reading(conn, rec)
+        evaluate_reading(conn, rec, events)
 
         # Only scan for closed discharge segments on a transition (load stopped,
         # reading gap), not on every sample of a long discharge.
@@ -167,12 +174,14 @@ def ingest(db: Database, s: Settings, models: ModelService, r: ReadingIn,
             closed = aggregate_live_cycles(conn, rec["battery_id"], s, models)
 
     return {"status": "stored", "reading_id": reading_id, "ts": rec["ts"],
-            "timestamp_source": rec["timestamp_source"], "flags": rec["flags"], "cycles_closed": closed}
+            "timestamp_source": rec["timestamp_source"], "cell_state": rec["cell_state"],
+            "flags": rec["flags"], "cycles_closed": closed}
 
 
 # ------------------------------------------------------------------ queries
 READING_FIELDS = ("id, battery_id, device_id, source, transport, ts, timestamp_source, received_at, voltage_v, current_a, "
-                  "temperature_c, power_w, power_source, seq, ina219_status, ds18b20_status, battery_detected, flags")
+                  "temperature_c, power_w, power_source, seq, ina219_status, ds18b20_status, battery_detected, "
+                  "cell_state, flags")
 
 
 def reading_out(row: sqlite3.Row) -> dict:
@@ -234,9 +243,9 @@ def history(conn: sqlite3.Connection, battery_id: str, start: Optional[datetime]
         bucket = max(1, -(-(stats["b"] - stats["a"] + 1) // max_points))
         rows = conn.execute(
             f"SELECT MIN(ts_ms) AS ts_ms, COUNT(*) AS n, "
-            f"AVG(CASE WHEN battery_detected=0 THEN NULL ELSE voltage_v END) AS voltage_v, "
+            f"AVG(CASE WHEN cell_state IN ('verified_current','confirmed') THEN voltage_v END) AS voltage_v, "
             f"AVG(current_a) AS current_a, AVG(temperature_c) AS temperature_c, AVG(power_w) AS power_w, "
-            f"MIN(CASE WHEN battery_detected=0 THEN NULL ELSE voltage_v END) AS voltage_min_v, "
+            f"MIN(CASE WHEN cell_state IN ('verified_current','confirmed') THEN voltage_v END) AS voltage_min_v, "
             f"MAX(temperature_c) AS temperature_max_c "
             f"FROM readings WHERE {w} GROUP BY (ts_ms - ?) / ? ORDER BY ts_ms",
             [*args, stats["a"], bucket]).fetchall()
@@ -248,8 +257,10 @@ def history(conn: sqlite3.Connection, battery_id: str, start: Optional[datetime]
     points = []
     for r in reversed(rows):
         d = reading_out(r)
-        if d["battery_detected"] is False:
-            d["voltage_raw_v"], d["voltage_v"] = d["voltage_v"], None
+        # voltage_v carries only verified cell voltage; the raw INA219 value is kept alongside.
+        d["voltage_raw_v"] = d["voltage_v"]
+        if d["cell_state"] not in VALID_STATES:
+            d["voltage_v"] = None
         points.append(d)
     return {"battery_id": battery_id, "total": total, "downsampled": False, "truncated": total > len(points),
             "points": points}

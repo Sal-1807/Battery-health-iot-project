@@ -61,15 +61,30 @@ Optional fields: everything except `battery_id`. At least one measurement or a `
 | `temperature_c` = −127 or DS18B20 status ≠ ok | temperature stored as null; `temperature_sensor_fault` |
 | `temperature_c` = 85.0 | null; `ds18b20_power_on_value` |
 | INA219 status `error`/`not_found` | voltage and current stored as null; `ina219_fault` |
-| `voltage_v` < 1.0 V or `battery_connected=false` | `battery_not_detected`; excluded from cycles and voltage alerts |
+| `cell_state` = `no_cell` (voltage outside 2.0–4.5 V, no current evidence) | `battery_not_detected` |
+| `cell_state` = `unverified` (in range, no current evidence, not confirmed) | `cell_unverified` |
 | `power_w` differs from V·\|I\| by > max(0.05 W, 15 %) | `power_inconsistent` |
 | `power_w` missing | computed as V·\|I\| (`power_source: "computed"`) |
+
+**Cell presence (`cell_state`).** Each stored reading gets one of these:
+
+| `cell_state` | Meaning | Used as cell voltage / voltage alerts? |
+|---|---|---|
+| `unknown` | no voltage (INA219 fault) | no |
+| `no_cell` | outside 2.0–4.5 V with no current evidence: floating input *or* deeply discharged cell (indistinguishable) | no |
+| `unverified` | in range, but at ~0 A presence cannot be proven | no |
+| `verified_current` | \|I\| ≥ 10 mA on two consecutive readings, or an unbroken in-range run since then | yes |
+| `confirmed` | operator confirmation (below), unbroken since | yes |
+
+- `sensor_status.battery_connected` from firmware is stored for diagnostics only and **never** used as evidence.
+- Settings: `BHM_CELL_PLAUSIBLE_MIN_V`, `BHM_CELL_PLAUSIBLE_MAX_V`, `BHM_CURRENT_EVIDENCE_A`, `BHM_PRESENCE_GAP_S`.
+- In history, `voltage_v` is null unless the state is verified; `voltage_raw_v` always holds the INA219 value.
 
 **Response 200**
 
 ```json
 {"status": "stored", "reading_id": 812, "ts": "2026-11-17T05:13:10.265Z",
- "timestamp_source": "device", "flags": [], "cycles_closed": []}
+ "timestamp_source": "device", "cell_state": "verified_current", "flags": [], "cycles_closed": []}
 ```
 
 - A retried message with the same `(device_id, boot_id, seq)` or the same timestamp returns `"status": "duplicate"` and the original `reading_id`.
@@ -103,6 +118,7 @@ Response: `{"battery_id", "total", "downsampled", "truncated", "points": [...]}`
 |---|---|
 | `GET /api/batteries` | All batteries with connection state, latest reading, latest (and latest valid) prediction, active alert counts, reading/cycle counts |
 | `GET /api/battery/{id}` | One battery summary |
+| `POST /api/battery/{id}/presence` | Body `{"confirmed": true\|false, "note": "..."}`. Operator confirmation that a cell is connected. Refused (409) if the latest reading is outside the Li-ion range or older than the presence gap. `false` withdraws it. |
 | `PUT /api/battery/{id}` | Update `label`, `chemistry`, `rated_capacity_ah`, `nominal_voltage_v`, `cutoff_voltage_v`, `cycle_count_offset`, `notes`. **`cycle_count_offset` is required before live cycles can be predicted** (model input `Cycle_number`). |
 
 ## Cycles and predictions
@@ -133,7 +149,7 @@ Response: `{"battery_id", "total", "downsampled", "truncated", "points": [...]}`
 
 | Route | Description |
 |---|---|
-| `GET /api/alerts?battery_id=&status=active\|resolved&limit=` | Alert list, newest first |
+| `GET /api/alerts?battery_id=&status=active\|resolved&limit=` | Alert list, newest first. Voltage alerts carry `classification`: `valid`, or `invalid_measurement` with a `resolution_note`. |
 | `GET /api/battery/{id}/alerts` | Same, for one battery |
 | `POST /api/alerts/{id}/acknowledge` | Mark acknowledged |
 | `GET /api/settings/thresholds` | Current thresholds |
@@ -145,7 +161,8 @@ Response: `{"battery_id", "total", "downsampled", "truncated", "points": [...]}`
 - `voltage_low`, `voltage_high`
 - `current_high`
 - `temperature_sensor_fault`, `ina219_fault`
-- `battery_not_detected`
+- `battery_not_detected` (severity **info**: no usable cell measurement)
+- `cell_signal_lost` (warning: a verified cell's reading left the Li-ion range at rest)
 - `device_offline`
 - `soh_low`: only from `experimental`/`nasa_in_sample` predictions, and flagged `experimental=1`
 

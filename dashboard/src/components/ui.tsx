@@ -98,8 +98,9 @@ export function PredictionPill({ status }: { status: PredictionStatus | undefine
 }
 
 /** Provenance tag: what kind of number this is. */
-export function Provenance({ kind }: { kind: "measured" | "simulated" | "derived" | "model" | "replay" | "unavailable" }) {
+export function Provenance({ kind }: { kind: "measured" | "simulated" | "derived" | "model" | "replay" | "unavailable" | "unverified" }) {
   const labels = {
+    unverified: "Unverified",
     measured: "Measured",
     simulated: "Simulated",
     derived: "Derived",
@@ -108,6 +109,7 @@ export function Provenance({ kind }: { kind: "measured" | "simulated" | "derived
     unavailable: "Unavailable",
   } as const;
   const tone: Record<typeof kind, Tone> = {
+    unverified: "warning",
     measured: "accent",
     simulated: "warning",
     derived: "neutral",

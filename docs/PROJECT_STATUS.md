@@ -114,3 +114,21 @@ Reported by the team from the Serial Monitor:
 - **Bugs found and fixed:**
   - Wi-Fi retries at 1/2/4 s could abort a join in progress.
   - Distinct readings within the same millisecond were dropped as duplicates (schema migration v2).
+
+## 9. False battery detection — fixed 2026-11-18
+
+**Symptom:** with no cell connected, the floating INA219 input read 0.72–1.14 V. Readings at 1.14 V crossed the 1.0 V "battery detect" threshold, so the backend raised **critical** low-voltage alerts and the dashboard showed the value as a battery voltage. The firmware made the same 1.0 V judgement.
+
+**Fix:**
+
+- **No threshold decides presence any more.** Each reading gets an explicit `cell_state` from evidence the hardware actually provides: Li-ion range plausibility, sustained shunt current, or an operator confirmation (see HARDWARE_SETUP.md §2a).
+- **Voltage alerts** run only on `verified_current` or `confirmed` readings. Thresholds are unchanged.
+- **Dashboard** shows **No cell** or **Unverified**, and offers "Confirm cell connected" for a resting cell.
+- **Firmware** no longer claims presence.
+- **History repair:** on upgrade (schema v4), existing readings are back-filled with `cell_state`. Voltage alerts raised without any verified reading are resolved and marked `classification = invalid_measurement` with a note; **no records are deleted**.
+
+**Known limitation:**
+
+- A floating input and a deeply discharged cell (below 2.0 V at rest) remain indistinguishable with the current hardware.
+- A resting, unconfirmed cell gets no voltage alerts.
+- Hardware options that would improve this are listed in HARDWARE_SETUP.md §2a.

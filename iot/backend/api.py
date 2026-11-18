@@ -24,7 +24,8 @@ from .cycles import aggregate_live_cycles, insert_cycle_features, store_predicti
 from .db import Database, row_to_dict
 from .model_service import ModelService
 from .nasa import NasaData
-from .schemas import BatteryUpsert, CycleIn, ReadingBatchIn, ReadingIn, Thresholds
+from .presence import Presence, load_presence, plausible, reclassify_history, save_presence
+from .schemas import BatteryUpsert, CycleIn, PresenceIn, ReadingBatchIn, ReadingIn, Thresholds
 from .telemetry import battery_summary, ensure_battery, history, ingest, parse_iso
 
 log = logging.getLogger("bhm")
@@ -34,6 +35,9 @@ PRED_JSON = ("reasons", "warnings", "out_of_range", "input_features")
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     s = settings or get_settings()
     db = Database(s.db_path)
+    repair = reclassify_history(db, s)   # back-fill cell_state; reclassify false voltage alerts (idempotent)
+    if repair["readings_classified"] or repair["alerts_reclassified"]:
+        log.info("history repair: %s", repair)
     models = ModelService(s)
     nasa = NasaData(s)
     started = now_iso()
@@ -79,6 +83,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                                else "stale" if age <= 10 * t.offline_after_s else "offline")
                 src = conn.execute("SELECT source FROM batteries WHERE battery_id=?", (dd["battery_id"],)).fetchone()
                 dd["data_origin"] = src["source"] if src else None
+                last = conn.execute("SELECT cell_state FROM readings WHERE device_id=? ORDER BY ts_ms DESC LIMIT 1",
+                                    (dd["device_id"],)).fetchone()
+                dd["cell_state"] = last["cell_state"] if last else None
                 devices.append(dd)
             counts = {r["source"]: r["n"] for r in conn.execute(
                 "SELECT source, COUNT(*) AS n FROM readings GROUP BY source").fetchall()}
@@ -139,6 +146,37 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                              [*fields.values(), battery_id])
             return dict(conn.execute("SELECT * FROM batteries WHERE battery_id=?", (battery_id,)).fetchone())
 
+    @app.post("/api/battery/{battery_id}/presence", tags=["batteries"])
+    def set_presence(battery_id: str, body: PresenceIn):
+        """Operator confirmation that a cell is connected (or withdrawal of it).
+
+        The INA219 cannot distinguish a floating input from a resting cell, so an
+        in-range voltage at ~0 A stays "unverified" until current flows or someone
+        confirms. Confirmation is refused if the latest reading is out of the Li-ion
+        range or stale; it lapses automatically on an out-of-range reading or a gap.
+        """
+        with db.write() as conn:
+            b = _battery(conn, battery_id)
+            if b["source"] == "nasa_replay":
+                raise HTTPException(400, "NASA replay batteries have no live cell")
+            if not body.confirmed:
+                save_presence(conn, battery_id, Presence(note=body.note))
+                return {"battery_id": battery_id, "presence": load_presence(conn, battery_id).__dict__}
+            last = conn.execute("SELECT ts, ts_ms, received_at, voltage_v FROM readings WHERE battery_id=? "
+                                "ORDER BY ts_ms DESC LIMIT 1", (battery_id,)).fetchone()
+            if last is None or last["voltage_v"] is None:
+                raise HTTPException(409, "no voltage reading yet; connect the device first")
+            age = (datetime.now(timezone.utc) - parse_iso(last["received_at"])).total_seconds()
+            if age > s.presence_gap_s:
+                raise HTTPException(409, f"latest reading is {age:.0f} s old; confirm while the device is reporting")
+            if not plausible(last["voltage_v"], s):
+                raise HTTPException(409, f"latest reading {last['voltage_v']:.3f} V is outside the Li-ion range "
+                                         f"({s.cell_plausible_min_v:g}-{s.cell_plausible_max_v:g} V): that is not "
+                                         f"consistent with a connected, usable cell")
+            p = Presence("operator", last["ts"], last["ts_ms"], body.note)
+            save_presence(conn, battery_id, p)
+            return {"battery_id": battery_id, "presence": p.__dict__, "confirmed_at_voltage_v": last["voltage_v"]}
+
     @app.get("/api/battery/{battery_id}/latest", tags=["telemetry"])
     def latest(battery_id: str):
         with db.read() as conn:
@@ -159,8 +197,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             h = history(conn, battery_id, start, end, limit, None if format == "csv" else max_points)
         if format == "csv":
             buf = io.StringIO()
-            cols = ["ts", "device_id", "source", "voltage_v", "current_a", "temperature_c", "power_w",
-                    "battery_detected", "timestamp_source", "flags"]
+            cols = ["ts", "device_id", "source", "cell_state", "voltage_v", "voltage_raw_v", "current_a",
+                    "temperature_c", "power_w", "timestamp_source", "flags"]
             w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
             w.writeheader()
             for p in h["points"]:

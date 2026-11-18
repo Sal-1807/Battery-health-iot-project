@@ -1,6 +1,6 @@
 import { api } from "../lib/api";
 import { usePoll } from "../lib/hooks";
-import { fmtAge, fmtTime, SOURCE_LABEL } from "../lib/format";
+import { CELL_STATE_LABEL, fmtAge, fmtTime, SOURCE_LABEL } from "../lib/format";
 import { Card, ConnectionPill, EmptyState, ErrorBox, Loading, Pill, Table } from "../components/ui";
 
 function sensorTone(s: string | undefined) {
@@ -96,7 +96,7 @@ export default function SystemPage() {
         {s.devices.length === 0 ? (
           <EmptyState title="No device has connected yet" />
         ) : (
-          <Table head={["Device", "Battery", "State", "Last seen", "Data origin", "INA219", "DS18B20", "Cell detected", "RSSI", "Firmware"]}>
+          <Table head={["Device", "Battery", "State", "Last seen", "Data origin", "INA219", "DS18B20", "Cell state (backend)", "RSSI", "Firmware"]}>
             {s.devices.map((d) => (
               <tr key={d.device_id}>
                 <td className="px-3 py-2 text-ink">{d.device_id}</td>
@@ -112,9 +112,7 @@ export default function SystemPage() {
                 <td className="px-3 py-2">
                   <Pill tone={sensorTone(d.last_sensor_status?.ds18b20)}>{d.last_sensor_status?.ds18b20 ?? "unknown"}</Pill>
                 </td>
-                <td className="px-3 py-2">
-                  {d.last_sensor_status?.battery_connected == null ? "unknown" : d.last_sensor_status.battery_connected ? "yes" : "no"}
-                </td>
+                <td className="px-3 py-2">{d.cell_state ? CELL_STATE_LABEL[d.cell_state] ?? d.cell_state : "—"}</td>
                 <td className="px-3 py-2">{d.last_rssi_dbm != null ? `${d.last_rssi_dbm} dBm` : "—"}</td>
                 <td className="px-3 py-2">{d.firmware_version ?? "—"}</td>
               </tr>

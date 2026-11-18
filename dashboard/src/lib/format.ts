@@ -53,7 +53,8 @@ export const FLAG_LABEL: Record<string, string> = {
   ina219_fault: "INA219 fault",
   temperature_sensor_fault: "DS18B20 fault",
   ds18b20_power_on_value: "DS18B20 power-on value (85 °C) discarded",
-  battery_not_detected: "no cell detected on INA219",
+  battery_not_detected: "no usable cell measurement (floating input or deeply discharged cell)",
+  cell_unverified: "cell presence unverified",
   power_inconsistent: "power ≠ V×I",
 };
 
@@ -65,7 +66,16 @@ export const ALERT_LABEL: Record<string, string> = {
   current_high: "High current",
   temperature_sensor_fault: "Temperature sensor fault",
   ina219_fault: "INA219 sensor fault",
-  battery_not_detected: "Battery not detected",
+  battery_not_detected: "No cell measurement",
+  cell_signal_lost: "Cell signal lost",
   device_offline: "Device offline",
   soh_low: "Low predicted SoH",
+};
+
+export const CELL_STATE_LABEL: Record<string, string> = {
+  no_cell: "No cell",
+  unverified: "Unverified",
+  verified_current: "Verified (current)",
+  confirmed: "Confirmed (operator)",
+  unknown: "Unknown",
 };

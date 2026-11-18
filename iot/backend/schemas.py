@@ -17,8 +17,9 @@ class SensorStatus(BaseModel):
 
     ina219: Literal["ok", "error", "not_found"] | None = None
     ds18b20: Literal["ok", "disconnected", "not_found", "error"] | None = None
-    # Firmware's own judgement of whether a cell is on the INA219 input. The
-    # backend applies its own voltage check as well.
+    # Legacy field: older firmware sent its own voltage-threshold guess here. It
+    # is stored for diagnostics only and NEVER used as evidence of a cell
+    # (a floating INA219 input can exceed any such threshold). See presence.py.
     battery_connected: Optional[bool] = None
 
 
@@ -168,3 +169,13 @@ class Thresholds(BaseModel):
         if errs:
             raise ValueError("; ".join(errs))
         return self
+
+
+class PresenceIn(BaseModel):
+    """Operator statement about the cell on the INA219 input."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    confirmed: bool = Field(description="true = a cell is physically connected (checked with a meter); "
+                                        "false = withdraw any presence evidence")
+    note: Optional[str] = Field(default=None, max_length=200)

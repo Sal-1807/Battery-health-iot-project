@@ -121,7 +121,7 @@ def test_floating_ina219_input_is_not_battery_voltage(client):
     out = client.post("/api/battery/reading", json=reading(v=0.04, i=0.0)).json()
     assert "battery_not_detected" in out["flags"]
     pts = client.get("/api/battery/HW-1/history").json()["points"]
-    assert pts[0]["voltage_v"] is None and pts[0]["voltage_raw_v"] == 0.04
+    assert pts[0]["voltage_v"] is None and pts[0]["voltage_raw_v"] == 0.04 and pts[0]["cell_state"] == "no_cell"
     types = {a["type"] for a in client.get("/api/alerts?status=active").json()["alerts"]}
     assert "battery_not_detected" in types and "voltage_low" not in types
 
@@ -157,9 +157,14 @@ def test_voltage_alerts_and_thresholds(client):
     assert t["voltage_low_crit_v"] == 3.0
     t["voltage_low_warn_v"] = 3.5
     assert client.put("/api/settings/thresholds", json=t).status_code == 200
-    client.post("/api/battery/reading", json=reading(v=3.45))
+    # at rest with no evidence of a cell, the reading is "unverified": no voltage alert
+    client.post("/api/battery/reading", json=reading(v=3.45, ts=past(10)))
+    assert not [x for x in client.get("/api/alerts?status=active").json()["alerts"] if x["type"] == "voltage_low"]
+    # once an operator confirms the cell, the (unchanged) threshold applies
+    assert client.post("/api/battery/HW-1/presence", json={"confirmed": True}).status_code == 200
+    client.post("/api/battery/reading", json=reading(v=3.45, ts=past(5)))
     a = [x for x in client.get("/api/alerts?status=active").json()["alerts"] if x["type"] == "voltage_low"]
-    assert a and a[0]["severity"] == "warning" and a[0]["unit"] == "V"
+    assert a and a[0]["severity"] == "warning" and a[0]["unit"] == "V" and a[0]["classification"] == "valid"
     t["voltage_low_crit_v"] = 3.6  # crit above warn: invalid
     assert client.put("/api/settings/thresholds", json=t).status_code == 422
 
@@ -203,7 +208,7 @@ def test_history_range_downsample_and_csv(client):
     assert len(lim["points"]) == 20 and lim["truncated"]
     csv = client.get("/api/battery/HW-1/history", params={"format": "csv"})
     assert csv.headers["content-type"].startswith("text/csv")
-    assert csv.text.splitlines()[0].startswith("ts,device_id,source,voltage_v")
+    assert csv.text.splitlines()[0].startswith("ts,device_id,source,cell_state,voltage_v,voltage_raw_v")
     assert len(csv.text.strip().splitlines()) == 301
     assert client.get("/api/battery/HW-1/history", params={"start": "2026-01-01T00:00:00"}).status_code == 422
 

@@ -98,7 +98,11 @@ export default function Live({ battery }: PageProps) {
       ) : (
         <div className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${hist.refreshing && !hist.data ? "opacity-60" : ""}`}>
           {METRICS.map((m) => (
-            <Card key={m.key} title={`${m.label} (${m.unit})`} subtitle={`${data.length} points`}>
+            <Card
+              key={m.key}
+              title={`${m.label} (${m.unit})`}
+              subtitle={m.key === "voltage_v" ? `${data.length} points · verified cell readings only` : `${data.length} points`}
+            >
               <TimeChart
                 data={data}
                 unit={m.unit}

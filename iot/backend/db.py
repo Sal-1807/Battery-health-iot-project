@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS batteries (
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS readings (
     boot_id             TEXT,
     ina219_status       TEXT,
     ds18b20_status      TEXT,
-    battery_detected    INTEGER,           -- 1/0/NULL
+    battery_detected    INTEGER,           -- legacy: 1 verified / 0 no cell / NULL undecided (see cell_state)
     flags               TEXT NOT NULL DEFAULT '[]'
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_readings_seq ON readings(device_id, boot_id, seq);
@@ -163,7 +163,20 @@ _SCHEMA_V3 = """
 ALTER TABLE readings ADD COLUMN transport TEXT;
 """
 
-_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3}
+# v4: explicit measurement-validity state (presence.py). Existing rows are
+# back-filled and false voltage alerts reclassified by presence.reclassify_history.
+_SCHEMA_V4 = """
+ALTER TABLE readings ADD COLUMN cell_state TEXT;
+ALTER TABLE batteries ADD COLUMN presence_evidence TEXT;
+ALTER TABLE batteries ADD COLUMN presence_since TEXT;
+ALTER TABLE batteries ADD COLUMN presence_last_ms INTEGER;
+ALTER TABLE batteries ADD COLUMN presence_note TEXT;
+ALTER TABLE alerts ADD COLUMN classification TEXT;
+ALTER TABLE alerts ADD COLUMN resolution_note TEXT;
+CREATE INDEX IF NOT EXISTS ix_readings_battery_rx ON readings(battery_id, received_at);
+"""
+
+_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4}
 
 
 class Database:

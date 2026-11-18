@@ -60,6 +60,33 @@ What the firmware does:
 
 It **only measures**: it never switches a load, never cuts off at low voltage and never controls charging.
 
+## 2a. What the INA219 can and cannot tell about cell presence
+
+With no cell attached, VIN+/VIN− float. On the team's board the open input read **0.72–1.14 V** and drifted between those values. Nothing guarantees it stays below any particular voltage. A connected cell at rest draws ~0 A, exactly like an open input.
+
+| Evidence | Proves | Does not prove |
+|---|---|---|
+| Voltage outside 2.0–4.5 V at ~0 A | No usable cell measurement | Whether it is a floating input or a **deeply discharged cell**; they look the same |
+| Voltage inside 2.0–4.5 V at ~0 A | nothing | That a cell is connected (an open input could float there) |
+| ≥ 10 mA through the shunt on two consecutive readings | A closed circuit with a source | That the source is *the cell* (a miswired supply looks the same) |
+| Operator confirmation | A person checked with a meter | — |
+
+How each layer uses this:
+
+- **Firmware:** makes no presence claim (`battery_connected: null`); its Serial log only gives a hint.
+- **Backend** (`iot/backend/presence.py`): gives every reading a `cell_state`:
+  - `no_cell`, `unverified` or `unknown`: never treated as cell voltage. No voltage alerts and no charting, and the dashboard shows **No cell** or **Unverified**.
+  - `verified_current` or `confirmed`: treated as cell voltage. Voltage alerts use the unchanged thresholds.
+- **Operator confirmation:** to use a resting cell's voltage, confirm it on the Overview page after checking it with a multimeter. The confirmation lapses automatically when the voltage leaves the Li-ion range or readings stop for 10 minutes.
+
+Trade-off, stated plainly: a resting cell that nobody has confirmed gets **no voltage alerts**. Under load this can't happen, because current verifies presence. A cell pulled below 2.0 V *under load* is still recognised and raises the critical alert.
+
+**Hardware upgrades that would give better evidence** (not implemented or tested):
+
+1. **A pull-down resistor from VIN+ to GND**, so an open input reads near 0 V instead of floating. Choose the value with the INA219 datasheet's input bias current and the cell's self-drain in mind, then **measure the open-input reading** to confirm it actually drops. Only after that measurement should the backend be changed to trust in-range resting voltages.
+2. **A firmware-switched test load**: a MOSFET plus resistor that briefly draws a known current, which creates current evidence on demand. Like any load on the cell, this needs the protection in §5.
+3. **A mechanical presence switch** in the battery holder.
+
 ## 3a. Without Wi-Fi: USB serial bridge
 
 Use this when the ESP32 cannot join a network. For example, campus Wi-Fi that uses
@@ -114,7 +141,7 @@ Also note that a 10 Ω load (≈ 0.37 A) differs completely from the NASA ≈ 2 
 | 1 | Sketch compiles and uploads | No errors; Serial shows `INA219: ok` and `DS18B20: ok` |
 | 2 | Wi-Fi + NTP | `WiFi: connected, IP …`, then `NTP: synced, UTC …` |
 | 3 | Backend receives data | Dashboard → System shows the device **Online**, origin "Hardware (ESP32)" |
-| 4 | No cell on INA219 inputs | Serial `cell=NO (floating input)`; dashboard alert "Battery not detected"; voltage not plotted |
+| 4 | No cell on INA219 inputs | Serial `input=outside Li-ion range (no cell / floating)`; dashboard voltage **No cell**, info alert "No cell measurement", no low-voltage alert, voltage not plotted |
 | 5 | Temperature | DS18B20 reading within ~0.5 °C of a reference thermometer; hand-warming raises it |
 | 6 | Unplug DS18B20 DATA | Serial `DS18B20: disconnected` / not found; dashboard "Temperature sensor fault" alert; recovers within ~10 s of re-plugging |
 | 7 | Unplug INA219 SDA | `INA219: stopped responding`; voltage/current shown as unavailable; recovers after re-plugging |

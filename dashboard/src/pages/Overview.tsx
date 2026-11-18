@@ -1,11 +1,125 @@
-import { BatteryWarning, Cpu } from "lucide-react";
+import { useState } from "react";
+import { BatteryWarning, Cpu, PlugZap } from "lucide-react";
 import type { PageProps } from "../App";
-import type { BatterySummary, Prediction } from "../lib/api";
+import { api, ApiError, VALID_CELL_STATES, type BatterySummary, type Prediction, type Reading } from "../lib/api";
 import { ageSeconds, fmt, fmtAge, fmtTime, FLAG_LABEL, SOURCE_LABEL, TIMESTAMP_LABEL } from "../lib/format";
 import { Card, ConnectionPill, EmptyState, Loading, Pill, PredictionPill, Provenance, SourceBadge, StatTile } from "../components/ui";
 
 function measuredKind(b: BatterySummary) {
   return b.source === "hardware" ? "measured" : "simulated";
+}
+
+/** Voltage is shown as a cell voltage only when presence is verified. */
+function VoltageTile({ r, b, kind }: { r: Reading; b: BatterySummary; kind: "measured" | "simulated" }) {
+  const state = r.cell_state;
+  const raw = fmt(r.voltage_v, 3, "V");
+  if (r.voltage_v == null || state === "unknown")
+    return <StatTile label="Voltage" value="—" muted tag={<Provenance kind="unavailable" />} foot="No voltage from the INA219" />;
+  if (state === "no_cell")
+    return (
+      <StatTile
+        label="Voltage"
+        value="No cell"
+        muted
+        tag={<Provenance kind="unavailable" />}
+        foot={`Input reads ${raw}, outside the Li-ion range, with no current: floating input (no cell) or a deeply discharged cell. Not a battery voltage.`}
+      />
+    );
+  if (state === "unverified")
+    return (
+      <StatTile
+        label="Voltage"
+        value={fmt(r.voltage_v, 3)}
+        unit="V"
+        muted
+        tag={<Provenance kind="unverified" />}
+        foot="In the Li-ion range, but at ~0 A the INA219 cannot prove a cell is connected. Confirm below or apply a load."
+      />
+    );
+  // verified_current | confirmed (or readings stored before validity tracking)
+  return (
+    <StatTile
+      label="Voltage"
+      value={fmt(r.voltage_v, 3)}
+      unit="V"
+      tag={<Provenance kind={kind} />}
+      foot={
+        state === "confirmed"
+          ? `Cell confirmed by operator${b.presence_since ? ` at ${fmtTime(b.presence_since)}` : ""}`
+          : state === "verified_current"
+            ? "Cell verified: load current observed"
+            : "INA219 load voltage (VIN+ to GND)"
+      }
+    />
+  );
+}
+
+/** Explains the presence state and lets the operator confirm a resting cell. */
+function CellPresencePanel({ b, r }: { b: BatterySummary; r: Reading }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const state = r.cell_state;
+  const verified = state != null && VALID_CELL_STATES.includes(state);
+
+  const send = async (confirmed: boolean) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api.setPresence(b.battery_id, confirmed, confirmed ? "confirmed from dashboard" : "withdrawn from dashboard");
+      setMsg({ ok: true, text: confirmed ? "Confirmed. Applies from the next reading." : "Confirmation withdrawn." });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : String(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (state !== "unverified" && !(verified && b.presence_evidence === "operator") && state !== "no_cell") return null;
+  return (
+    <div className="flex flex-wrap items-start gap-3 rounded-lg border border-line bg-panel px-4 py-3 text-xs leading-relaxed text-ink-2">
+      <PlugZap size={16} className="mt-0.5 shrink-0 text-ink-3" />
+      <div className="min-w-0 flex-1">
+        {state === "no_cell" && (
+          <p>
+            <span className="font-medium text-ink">No cell measurement.</span> With nothing connected, the INA219 input
+            floats (0.7–1.1 V was observed on this board). Voltage alerts are suppressed until a cell is verified.
+          </p>
+        )}
+        {state === "unverified" && (
+          <p>
+            <span className="font-medium text-ink">Cell presence unverified.</span> A resting cell and a floating input
+            both read ~0 A, so the voltage alone cannot prove a cell is connected. Voltage alerts stay off until presence
+            is verified by load current or by you. Only confirm after checking the cell with a multimeter.
+          </p>
+        )}
+        {verified && b.presence_evidence === "operator" && (
+          <p>
+            <span className="font-medium text-ink">Cell confirmed by an operator.</span> The confirmation lapses
+            automatically if the voltage leaves the Li-ion range or readings stop for 10 min.
+          </p>
+        )}
+        {msg && <p className={`mt-1 ${msg.ok ? "text-good" : "text-critical"}`}>{msg.text}</p>}
+      </div>
+      {state === "unverified" && (
+        <button
+          disabled={busy}
+          onClick={() => send(true)}
+          className="rounded-lg border border-accent/50 bg-accent/10 px-3 py-1.5 font-medium text-accent hover:bg-accent/20 disabled:opacity-50"
+        >
+          Confirm cell connected
+        </button>
+      )}
+      {verified && b.presence_evidence === "operator" && (
+        <button
+          disabled={busy}
+          onClick={() => send(false)}
+          className="rounded-lg border border-line px-3 py-1.5 text-ink-2 hover:text-ink disabled:opacity-50"
+        >
+          Withdraw confirmation
+        </button>
+      )}
+    </div>
+  );
 }
 
 function HealthTiles({ b }: { b: BatterySummary }) {
@@ -99,18 +213,7 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
       ) : (
         <>
           <div className={`grid grid-cols-2 gap-3 lg:grid-cols-4 ${stale ? "opacity-70" : ""}`}>
-            <StatTile
-              label="Voltage"
-              value={r.battery_detected === false ? "No cell" : fmt(r.voltage_v, 3)}
-              unit={r.battery_detected === false ? undefined : "V"}
-              muted={r.voltage_v == null || r.battery_detected === false}
-              tag={<Provenance kind={r.voltage_v == null || r.battery_detected === false ? "unavailable" : kind} />}
-              foot={
-                r.battery_detected === false
-                  ? `INA219 input floating (raw ${fmt(r.voltage_v, 3, "V")}) — not a battery voltage`
-                  : "INA219 load voltage (VIN+ to GND)"
-              }
-            />
+            <VoltageTile r={r} b={b} kind={kind} />
             <StatTile
               label="Current"
               value={fmt(r.current_a, 3)}
@@ -136,6 +239,7 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
               foot={r.power_source === "computed" ? "Computed as V × |I| by the backend" : "Reported by the device (INA219 power register)"}
             />
           </div>
+          {b.source === "hardware" && <CellPresencePanel b={b} r={r} />}
           <p className="text-xs text-ink-3">
             Last reading {fmtTime(r.ts, true)} ({fmtAge(age)}) · time from {TIMESTAMP_LABEL[r.timestamp_source] ?? r.timestamp_source}
             {r.transport === "usb_serial" ? " · via USB" : r.transport === "wifi" ? " · via Wi-Fi" : ""} ·

@@ -30,13 +30,17 @@ const base: BatterySummary = {
   cutoff_voltage_v: null,
   cycle_count_offset: null,
   source: "hardware",
+  presence_evidence: "current",
+  presence_since: now,
+  presence_note: null,
   notes: null,
   created_at: now,
   connection: { state: "online", age_s: 1 },
   latest_reading: {
     id: 1, battery_id: "CELL-1", device_id: "esp32-a", source: "hardware", ts: now, timestamp_source: "device",
     received_at: now, voltage_v: 3.891, current_a: 0.372, temperature_c: 24.56, power_w: 1.447,
-    power_source: "device", ina219_status: "ok", ds18b20_status: "ok", battery_detected: true, flags: [],
+    power_source: "device", ina219_status: "ok", ds18b20_status: "ok", battery_detected: true,
+    cell_state: "verified_current", flags: [],
   },
   latest_prediction: {
     id: 9, battery_id: "CELL-1", cycle_id: 1, cycle_number: null, created_at: now, status: "unavailable",
@@ -113,13 +117,45 @@ describe("App shell", () => {
   });
 });
 
-describe("floating INA219 input", () => {
-  it("does not present the floating voltage as a battery voltage", () => {
-    const b = { ...base, latest_reading: { ...base.latest_reading!, voltage_v: 0.888, battery_detected: false, flags: ["battery_not_detected"] } };
+describe("cell presence states", () => {
+  const withReading = (patch: Partial<BatterySummary["latest_reading"] & object>, presence: Partial<BatterySummary> = {}) => {
+    const b = { ...base, ...presence, latest_reading: { ...base.latest_reading!, ...patch } } as BatterySummary;
     render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
-    expect(screen.getByText("No cell")).toBeTruthy();
-    expect(screen.queryByText("0.888")).toBeNull();
-    expect(screen.getByText(/not a battery voltage/)).toBeTruthy();
+  };
+
+  for (const v of [0.72, 0.88, 1.14]) {
+    it(`floating ${v} V is shown as "No cell", never as a voltage`, () => {
+      withReading({ voltage_v: v, current_a: -0.0002, battery_detected: false, cell_state: "no_cell", flags: ["battery_not_detected"] },
+        { presence_evidence: null });
+      expect(screen.getByText("No cell")).toBeTruthy();
+      expect(screen.queryByText(v.toFixed(3))).toBeNull();               // no headline number
+      expect(screen.getByText(/Not a battery voltage/)).toBeTruthy();
+      expect(screen.getAllByText("Unavailable").length).toBeGreaterThanOrEqual(1);
+      cleanup();
+    });
+  }
+
+  it("a resting in-range reading is Unverified and offers confirmation", () => {
+    withReading({ voltage_v: 3.889, current_a: 0.0001, battery_detected: null, cell_state: "unverified", flags: ["cell_unverified"] },
+      { presence_evidence: null });
+    expect(screen.getByText("3.889")).toBeTruthy();
+    expect(screen.getAllByText("Unverified").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryAllByText("Measured").length).toBe(3);               // I, T, P only - not V
+    expect(screen.getByRole("button", { name: /Confirm cell connected/ })).toBeTruthy();
+  });
+
+  it("an operator-confirmed cell is a measurement and can be withdrawn", () => {
+    withReading({ voltage_v: 3.888, cell_state: "confirmed" }, { presence_evidence: "operator" });
+    expect(screen.getAllByText("Measured").length).toBe(4);
+    expect(screen.getByText(/Cell confirmed by operator/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Withdraw confirmation/ })).toBeTruthy();
+  });
+
+  it("a current-verified cell is a measurement", () => {
+    withReading({ voltage_v: 3.71, current_a: 0.37, cell_state: "verified_current" });
+    expect(screen.getByText("3.710")).toBeTruthy();
+    expect(screen.getByText(/load current observed/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Confirm cell connected/ })).toBeNull();
   });
 
   it("labels USB-bridge timestamps as PC clock", () => {

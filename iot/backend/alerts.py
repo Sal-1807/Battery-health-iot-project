@@ -14,9 +14,10 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from .db import Database
+from .presence import VALID_STATES
 from .schemas import Thresholds
 
 DEFAULT_THRESHOLDS = Thresholds()
@@ -40,7 +41,7 @@ def save_thresholds(db: Database, t: Thresholds) -> None:
 
 
 def _raise(conn, battery_id, device_id, type_, severity, message, value=None, threshold=None,
-           unit=None, experimental=False, ts=None, count=True) -> None:
+           unit=None, experimental=False, ts=None, count=True, classification=None) -> None:
     ts = ts or now_iso()
     row = conn.execute("SELECT id, severity FROM alerts WHERE battery_id=? AND type=? AND status='active'",
                        (battery_id, type_)).fetchone()
@@ -51,8 +52,9 @@ def _raise(conn, battery_id, device_id, type_, severity, message, value=None, th
     else:
         conn.execute(
             "INSERT INTO alerts(battery_id, device_id, type, severity, message, value, threshold, unit, "
-            "status, first_seen, last_seen, experimental) VALUES (?,?,?,?,?,?,?,?, 'active', ?, ?, ?)",
-            (battery_id, device_id, type_, severity, message, value, threshold, unit, ts, ts, int(experimental)))
+            "status, first_seen, last_seen, experimental, classification) VALUES (?,?,?,?,?,?,?,?, 'active', ?, ?, ?, ?)",
+            (battery_id, device_id, type_, severity, message, value, threshold, unit, ts, ts, int(experimental),
+             classification))
 
 
 def _clear(conn, battery_id, type_, ts=None) -> None:
@@ -60,8 +62,14 @@ def _clear(conn, battery_id, type_, ts=None) -> None:
                  (ts or now_iso(), battery_id, type_))
 
 
-def evaluate_reading(conn: sqlite3.Connection, r: dict[str, Any]) -> None:
-    """Apply threshold rules to one stored reading (dict of the readings row)."""
+def evaluate_reading(conn: sqlite3.Connection, r: dict[str, Any], events: Sequence[str] = ()) -> None:
+    """Apply threshold rules to one stored reading (dict of the readings row).
+
+    Voltage rules run ONLY when ``cell_state`` is verified (current evidence or
+    operator confirmation). For ``unverified``/``no_cell``/``unknown`` readings
+    voltage alerts are neither raised nor cleared: the reading says nothing
+    reliable about the cell. Thresholds themselves are unchanged.
+    """
     t = load_thresholds(conn)
     b, dev = r["battery_id"], r["device_id"]
     flags = set(r.get("flags") or [])
@@ -78,13 +86,24 @@ def evaluate_reading(conn: sqlite3.Connection, r: dict[str, Any]) -> None:
     else:
         _clear(conn, b, "ina219_fault")
 
-    if r.get("battery_detected") == 0:
-        _raise(conn, b, dev, "battery_not_detected", "warning",
-               "INA219 input voltage is below the battery-detect level: no cell connected or floating input. "
-               "Voltage readings are not treated as battery data.",
-               value=r.get("voltage_v"), unit="V")
-    else:
+    state = r.get("cell_state")
+    v = r.get("voltage_v")
+    if state == "no_cell":
+        _raise(conn, b, dev, "battery_not_detected", "info",
+               f"No usable cell measurement: INA219 input reads {v:.3f} V (outside the Li-ion range) with no current. "
+               "Either no cell is connected (floating input) or the cell is deeply discharged; "
+               "the INA219 cannot tell these apart. Not treated as battery voltage.",
+               value=v, unit="V")
+    elif state is not None and state != "unknown":
         _clear(conn, b, "battery_not_detected")
+
+    if "cell_lost" in events:
+        _raise(conn, b, dev, "cell_signal_lost", "warning",
+               f"A verified cell reading dropped to {v:.3f} V (outside the Li-ion range) at rest: the cell was removed, "
+               "a wire came loose, or the cell is deeply discharged. Check the setup.",
+               value=v, unit="V")
+    elif state in VALID_STATES:
+        _clear(conn, b, "cell_signal_lost")
 
     # ---- temperature
     temp = r.get("temperature_c")
@@ -104,23 +123,22 @@ def evaluate_reading(conn: sqlite3.Connection, r: dict[str, Any]) -> None:
         else:
             _clear(conn, b, "temperature_low")
 
-    # ---- voltage (only when a cell is actually detected)
-    v = r.get("voltage_v")
-    if v is not None and r.get("battery_detected") == 1:
+    # ---- voltage: only on verified cell readings (see docstring)
+    if v is not None and state in VALID_STATES:
         if v <= t.voltage_low_crit_v:
             _raise(conn, b, dev, "voltage_low", "critical",
-                   f"Cell voltage {v:.3f} V <= {t.voltage_low_crit_v:g} V. Stop discharging.", v, t.voltage_low_crit_v, "V")
+                   f"Cell voltage {v:.3f} V <= {t.voltage_low_crit_v:g} V. Stop discharging.", v, t.voltage_low_crit_v, "V", classification="valid")
         elif v <= t.voltage_low_warn_v:
             _raise(conn, b, dev, "voltage_low", "warning",
-                   f"Cell voltage {v:.3f} V <= {t.voltage_low_warn_v:g} V.", v, t.voltage_low_warn_v, "V")
+                   f"Cell voltage {v:.3f} V <= {t.voltage_low_warn_v:g} V.", v, t.voltage_low_warn_v, "V", classification="valid")
         else:
             _clear(conn, b, "voltage_low")
         if v >= t.voltage_high_crit_v:
             _raise(conn, b, dev, "voltage_high", "critical",
-                   f"Cell voltage {v:.3f} V >= {t.voltage_high_crit_v:g} V (overcharge range).", v, t.voltage_high_crit_v, "V")
+                   f"Cell voltage {v:.3f} V >= {t.voltage_high_crit_v:g} V (overcharge range).", v, t.voltage_high_crit_v, "V", classification="valid")
         elif v >= t.voltage_high_warn_v:
             _raise(conn, b, dev, "voltage_high", "warning",
-                   f"Cell voltage {v:.3f} V >= {t.voltage_high_warn_v:g} V.", v, t.voltage_high_warn_v, "V")
+                   f"Cell voltage {v:.3f} V >= {t.voltage_high_warn_v:g} V.", v, t.voltage_high_warn_v, "V", classification="valid")
         else:
             _clear(conn, b, "voltage_high")
 

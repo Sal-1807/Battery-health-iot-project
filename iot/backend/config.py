@@ -44,9 +44,16 @@ class Settings:
     # battery override lives in the batteries table.
     default_cutoff_v: float = float(_env("DEFAULT_CUTOFF_V", "3.0"))
 
-    # Readings below this voltage are treated as "no battery on the INA219"
-    # (floating / disconnected input), never as a genuine cell voltage.
-    battery_detect_min_v: float = float(_env("BATTERY_DETECT_MIN_V", "1.0"))
+    # ---- cell presence / measurement validity (see presence.py) ----
+    # Li-ion plausibility window. A reading outside it at ~0 A is "no usable cell
+    # measurement". A reading inside it does NOT prove a cell is connected.
+    cell_plausible_min_v: float = float(_env("CELL_PLAUSIBLE_MIN_V", "2.0"))
+    cell_plausible_max_v: float = float(_env("CELL_PLAUSIBLE_MAX_V", "4.5"))
+    # |current| on two consecutive readings that proves a closed circuit
+    # (~20x the +/-0.5 mA noise observed on the team's INA219 with an open input).
+    current_evidence_a: float = float(_env("CURRENT_EVIDENCE_A", "0.010"))
+    # Presence evidence expires after a reading gap this long (cell may have been swapped).
+    presence_gap_s: float = float(_env("PRESENCE_GAP_S", "600"))
 
     # Timestamps further than this in the future are rejected.
     max_future_skew_s: float = float(_env("MAX_FUTURE_SKEW_S", "300"))
