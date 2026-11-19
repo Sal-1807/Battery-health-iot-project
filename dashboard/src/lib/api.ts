@@ -159,6 +159,7 @@ export interface BatteryStats {
 
 export interface CompareRow {
   battery_id: string;
+  source?: BatterySource;
   label: string | null;
   managed: boolean;
   rated_capacity_mah: number | null;
@@ -284,6 +285,7 @@ export interface Thresholds {
 
 export interface Health {
   status: "ok" | "degraded";
+  mode?: "production" | "simulation";
   api_version: string;
   server_time: string;
   started_at: string;
@@ -410,6 +412,7 @@ export interface AgingSession {
 }
 export interface Aging {
   battery_id: string;
+  source?: BatterySource;
   label: string | null;
   rated_capacity_mah: number | null;
   rated_note: string;

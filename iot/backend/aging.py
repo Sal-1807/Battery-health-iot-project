@@ -142,6 +142,7 @@ def battery_aging(conn: sqlite3.Connection, battery: dict, s: Settings) -> dict[
     return {
         "battery_id": bid,
         "label": battery.get("label"),
+        "source": battery.get("source"),
         "rated_capacity_mah": rated_mah,
         "rated_note": "Manufacturer label rating. Not used as the capacity reference.",
         "totals": {

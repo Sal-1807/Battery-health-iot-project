@@ -83,3 +83,4 @@ dashboard/.vite/
 .env.local
 *.tsbuildinfo
 .pytest_cache/
+iot/data/*.json

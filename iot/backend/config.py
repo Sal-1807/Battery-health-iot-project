@@ -16,6 +16,9 @@ def _env(name: str, default: str) -> str:
 
 @dataclass(frozen=True)
 class Settings:
+    # "production" (default) or "simulation". Simulation mode serves a separate
+    # simulation database with SIM-* profiles and refuses hardware telemetry.
+    mode: str = field(default_factory=lambda: _env("MODE", "production").strip().lower())
     db_path: Path = field(default_factory=lambda: Path(_env("DB_PATH", str(REPO_ROOT / "iot" / "data" / "telemetry.db"))))
     model_dir: Path = field(default_factory=lambda: Path(_env("MODEL_DIR", str(REPO_ROOT / "models"))))
     features_csv: Path = field(default_factory=lambda: Path(_env(

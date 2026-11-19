@@ -120,7 +120,15 @@ export default function App() {
         </nav>
       </header>
 
-      {battery && battery.source !== "hardware" && page !== "ml" && page !== "aging" && page !== "tests" && (
+      {health.data?.mode === "simulation" && (
+        <div role="status" className="border-b-2 border-warning bg-warning/20">
+          <p className="mx-auto max-w-7xl px-4 py-2 text-sm font-semibold text-warning sm:px-6">
+            SIMULATION MODE — every value on this dashboard is synthetic, from the simulation database. These are not
+            measurements of a real battery.
+          </p>
+        </div>
+      )}
+      {battery && battery.source !== "hardware" && health.data?.mode !== "simulation" && page !== "ml" && page !== "aging" && page !== "tests" && (
         <div className="border-b border-warning/30 bg-warning/10">
           <p className="mx-auto max-w-7xl px-4 py-2 text-xs text-warning sm:px-6">
             {battery.source === "simulation"

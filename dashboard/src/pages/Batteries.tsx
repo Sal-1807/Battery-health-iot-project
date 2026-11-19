@@ -148,7 +148,10 @@ export default function Batteries({ selectBattery }: { selectBattery: (id: strin
               const last = r.stats.capacity_measurements[r.stats.capacity_measurements.length - 1];
               return (
                 <tr key={r.battery_id}>
-                  <td className="px-3 py-2 font-medium text-ink">{r.battery_id}</td>
+                  <td className="px-3 py-2 font-medium text-ink">
+                    {r.battery_id}
+                    {r.source === "simulation" && <span className="ml-2"><Pill tone="warning">SIMULATED</Pill></span>}
+                  </td>
                   <td className="px-3 py-2">{fmt(r.rated_capacity_mah, 0)} mAh</td>
                   <td className="px-3 py-2">
                     {r.assignment ? <Pill tone="accent">on {r.assignment.device_id}</Pill> : <span className="text-ink-3">not selected</span>}

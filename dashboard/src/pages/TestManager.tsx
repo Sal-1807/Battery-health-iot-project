@@ -5,7 +5,6 @@ import { usePoll } from "../lib/hooks";
 import { fmt, fmtDuration, fmtTime } from "../lib/format";
 import { Card, ErrorBox, Loading, Pill, Segmented, StatTile, Table } from "../components/ui";
 
-const BATS = ["BAT-A-3000", "BAT-B-3000", "BAT-C-2500"] as const;
 const STATE_LABEL: Record<TestState, string> = {
   not_started: "Not Started", ready: "Ready", running: "Running", paused: "Paused", completed: "Completed", aborted: "Aborted",
 };
@@ -224,8 +223,11 @@ function TestDetail({ uid, onChanged }: { uid: string; onChanged: () => void }) 
 }
 
 export default function TestManager() {
-  const [filter, setFilter] = useState<"all" | (typeof BATS)[number]>("all");
-  const [newBat, setNewBat] = useState<(typeof BATS)[number]>("BAT-A-3000");
+  const profiles = usePoll(() => api.compare(), 30000, []);
+  const BATS = (profiles.data?.batteries ?? []).map((b) => b.battery_id);
+  const [filter, setFilter] = useState<string>("all");
+  const [picked, setNewBat] = useState<string | null>(null);
+  const newBat = picked && BATS.includes(picked) ? picked : BATS[0] ?? "";
   const [notes, setNotes] = useState("");
   const [sel, setSel] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -254,14 +256,14 @@ export default function TestManager() {
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs text-ink-3">
             Battery
-            <select aria-label="New test battery" value={newBat} onChange={(e) => setNewBat(e.target.value as (typeof BATS)[number])}
+            <select aria-label="New test battery" value={newBat} onChange={(e) => setNewBat(e.target.value)}
                     className="ml-2 rounded-lg border border-line bg-panel-2 px-2.5 py-1.5 text-sm text-ink">
               {BATS.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
           </label>
           <input aria-label="Notes" placeholder="notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)}
                  className="rounded-md border border-line bg-panel-2 px-2 py-1.5 text-sm text-ink" />
-          <button onClick={create} className="rounded-lg bg-accent-strong px-3 py-1.5 text-sm font-medium text-page hover:bg-accent">
+          <button onClick={create} disabled={!newBat} className="rounded-lg bg-accent-strong px-3 py-1.5 text-sm font-medium text-page hover:bg-accent">
             Create test
           </button>
         </div>

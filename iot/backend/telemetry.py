@@ -126,6 +126,9 @@ def normalise_reading(r: ReadingIn, s: Settings, now: datetime) -> dict[str, Any
 def ingest(db: Database, s: Settings, models: ModelService, r: ReadingIn,
            now: Optional[datetime] = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
+    if s.mode == "simulation" and r.source == "hardware":
+        raise HTTPException(403, "this backend runs in SIMULATION mode with a simulation database; "
+                                 "hardware telemetry is refused so it can never be mixed with synthetic data")
     rec = normalise_reading(r, s, now)
     with db.write() as conn:
         # Which battery this reading belongs to is decided by the device assignment

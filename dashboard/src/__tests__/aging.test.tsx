@@ -51,7 +51,7 @@ describe("Aging analytics page", () => {
     mockApi([]);
     render(<AgingPage />);
     await waitFor(() => expect(screen.getByText("2500 mAh")).toBeTruthy());
-    expect(screen.getAllByText("0.900").length).toBe(2);              // EFC for A: comparison row + detail tile
+    await waitFor(() => expect(screen.getAllByText("0.900").length).toBe(2));   // EFC for A: comparison row + detail tile
     expect(screen.getByText("96.4 %")).toBeTruthy();                   // retention, A only
     expect(screen.getAllByText("Insufficient data").length).toBeGreaterThanOrEqual(2);  // B and C
     expect(screen.getAllByText("Unavailable").length).toBe(3);

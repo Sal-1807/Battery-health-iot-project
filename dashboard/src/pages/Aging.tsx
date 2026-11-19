@@ -6,8 +6,7 @@ import { fmt, fmtDuration, fmtTime } from "../lib/format";
 import { CycleChart, TimeChart } from "../components/charts";
 import { Card, EmptyState, ErrorBox, Loading, Notice, Pill, Segmented, StatTile, Table } from "../components/ui";
 
-type Bat = "BAT-A-3000" | "BAT-B-3000" | "BAT-C-2500";
-const BATS: Bat[] = ["BAT-A-3000", "BAT-B-3000", "BAT-C-2500"];
+type Bat = string;
 const S1 = "var(--color-series-1)";
 
 function Insufficient({ reason }: { reason: string | null }) {
@@ -31,6 +30,7 @@ function Comparison({ rows, onPick }: { rows: AgingT[]; onPick: (b: Bat) => void
             <button className="font-medium text-accent hover:underline" onClick={() => onPick(a.battery_id as Bat)}>
               {a.battery_id}
             </button>
+            {a.source === "simulation" && <span className="ml-2"><Pill tone="warning">SIMULATED</Pill></span>}
           </td>
           <td className="px-3 py-2">{fmt(a.rated_capacity_mah, 0)} mAh</td>
           <td className="px-3 py-2">{a.totals.n_sessions}</td>
@@ -154,9 +154,11 @@ function Detail({ id }: { id: Bat }) {
 }
 
 export default function Aging() {
-  const [bat, setBat] = useState<Bat>("BAT-A-3000");
   const ov = usePoll(() => api.aging(), 15000, []);
   const rules = ov.data?.rules;
+  const ids = (ov.data?.batteries ?? []).map((b) => b.battery_id);
+  const [picked, setBat] = useState<Bat | null>(null);
+  const bat = picked && ids.includes(picked) ? picked : ids[0];
 
   return (
     <div className="space-y-6">
@@ -184,10 +186,14 @@ export default function Aging() {
         {ov.loading ? <Loading /> : <Comparison rows={ov.data?.batteries ?? []} onPick={setBat} />}
       </Card>
 
-      <div className="flex items-center gap-3">
-        <Segmented label="Battery" value={bat} onChange={setBat} options={BATS.map((b) => ({ value: b, label: b }))} />
-      </div>
-      <Detail id={bat} />
+      {bat && (
+        <>
+          <div className="flex items-center gap-3">
+            <Segmented label="Battery" value={bat} onChange={setBat} options={ids.map((b) => ({ value: b, label: b }))} />
+          </div>
+          <Detail id={bat} />
+        </>
+      )}
     </div>
   );
 }

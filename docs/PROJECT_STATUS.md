@@ -191,3 +191,7 @@ The **Test Manager** page records supervised discharge experiments for BAT-A, BA
 - **Software state only:** test state is shown separately from the measured hardware state. There is no automatic cutoff or protection, and a permanent warning tells the operator to physically disconnect the load.
 
 Migration v7 adds the `battery_tests` table; existing records are unchanged.
+
+## 15. End-to-end simulation — added 2026-11-19
+
+`python -m iot.simulation.run` produces synthetic INA219/DS18B20 telemetry and runs it through the real API, using a separate simulation database and SIM-* profiles. It runs 52 verification checks. Details: docs/SIMULATION.md.

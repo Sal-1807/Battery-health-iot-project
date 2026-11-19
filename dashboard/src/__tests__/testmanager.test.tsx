@@ -33,7 +33,9 @@ function mockApi(state: { running: BatteryTest }, calls: { url: string; init?: R
     const url = String(input);
     calls.push({ url, init });
     let body: unknown;
-    if (url.match(/\/api\/tests\/[^/]+\/(start|pause|resume|complete|abort)$/)) {
+    if (url.includes("/api/batteries/compare")) {
+      body = { batteries: ["BAT-A-3000", "BAT-B-3000", "BAT-C-2500"].map((id) => ({ battery_id: id, source: "hardware" })) };
+    } else if (url.match(/\/api\/tests\/[^/]+\/(start|pause|resume|complete|abort)$/)) {
       const action = url.split("/").pop()!;
       const target = { start: "running", pause: "paused", resume: "running", complete: "completed", abort: "aborted" }[action] as TestState;
       state.running = { ...state.running, state: target };

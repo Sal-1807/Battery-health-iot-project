@@ -132,6 +132,14 @@ python -m iot.simulator.simulate_esp32 telemetry --backfill --interval 5 --speed
 Simulated and replayed batteries carry a permanent banner and "Simulated"/"NASA replay"
 labels in the dashboard. They can never be stored under a hardware battery ID.
 
+## Simulation and verification (no battery needed)
+
+```bash
+python -m iot.simulation.run
+```
+
+This runs a full synthetic workflow through the real API, in a separate simulation database. It covers analytic 1000 mAh / 4.000 Wh checks, full and partial discharges, battery switching, gaps, duplicates, out-of-order telemetry, the Test Manager, isolation and CSV exports, and prints a pass/fail report. See [docs/SIMULATION.md](docs/SIMULATION.md), including how to view the simulated data in the dashboard (with a SIMULATION MODE banner).
+
 ## End-to-end demonstration
 
 1. Start the backend (step 2) and dashboard (step 3).

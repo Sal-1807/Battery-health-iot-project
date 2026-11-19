@@ -36,9 +36,32 @@ log = logging.getLogger("bhm")
 PRED_JSON = ("reasons", "warnings", "out_of_range", "input_features")
 
 
+SIM_PROFILES = (("SIM-BAT-A-3000", "SIMULATED Battery A - 3000 mAh", 3.0),
+                ("SIM-BAT-B-3000", "SIMULATED Battery B - 3000 mAh", 3.0),
+                ("SIM-BAT-C-2500", "SIMULATED Battery C - 2500 mAh", 2.5))
+
+
+def profile_source(s: Settings) -> str:
+    """Physical-profile views show only real profiles in production and only SIM-* ones in simulation."""
+    return "simulation" if s.mode == "simulation" else "hardware"
+
+
+def seed_simulation_profiles(db: Database) -> None:
+    with db.write() as conn:
+        for bid, label, cap in SIM_PROFILES:
+            conn.execute("INSERT OR IGNORE INTO batteries(battery_id, label, chemistry, rated_capacity_ah, "
+                         "nominal_voltage_v, source, notes, created_at, managed) VALUES (?,?,?,?,?,?,?,?,1)",
+                         (bid, label, "Li-ion 18650 (simulated)", cap, 3.7, "simulation",
+                          "Synthetic profile for the simulation workflow. Not a physical battery.", now_iso()))
+
+
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     s = settings or get_settings()
+    if s.mode not in ("production", "simulation"):
+        raise ValueError(f"BHM_MODE must be 'production' or 'simulation', not {s.mode!r}")
     db = Database(s.db_path)
+    if s.mode == "simulation":
+        seed_simulation_profiles(db)
     repair = reclassify_history(db, s)   # back-fill cell_state; reclassify false voltage alerts (idempotent)
     if repair["readings_classified"] or repair["alerts_reclassified"]:
         log.info("history repair: %s", repair)
@@ -69,6 +92,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     def health():
         db_ok = db.ping()
         return {"status": "ok" if db_ok and models.loaded else "degraded", "api_version": __version__,
+                "mode": s.mode,
                 "server_time": now_iso(), "started_at": started, "database": {"ok": db_ok, "path": str(s.db_path)},
                 "models": {"loaded": models.loaded, "version": models.version, "error": models.error}}
 
@@ -232,14 +256,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """Side-by-side measured statistics for the physical battery profiles."""
         refresh_offline(db, s)
         with db.read() as conn:
-            q = "SELECT * FROM batteries" + ("" if include_all else " WHERE managed=1") + " ORDER BY battery_id"
-            rows = [dict(r) for r in conn.execute(q).fetchall()]
+            q = "SELECT * FROM batteries" + ("" if include_all else " WHERE managed=1 AND source=?") + " ORDER BY battery_id"
+            rows = [dict(r) for r in conn.execute(q, () if include_all else (profile_source(s),)).fetchall()]
             out = []
             for b in rows:
                 last = conn.execute("SELECT ts, cell_state FROM readings WHERE battery_id=? ORDER BY ts_ms DESC LIMIT 1",
                                     (b["battery_id"],)).fetchone()
                 n = conn.execute("SELECT COUNT(*) AS n FROM readings WHERE battery_id=?", (b["battery_id"],)).fetchone()["n"]
                 out.append({"battery_id": b["battery_id"], "label": b["label"], "managed": bool(b["managed"]),
+                            "source": b["source"],
                             "rated_capacity_mah": b["rated_capacity_ah"] * 1000 if b["rated_capacity_ah"] else None,
                             "assignment": battery_assignment(conn, b["battery_id"]),
                             "presence_evidence": b["presence_evidence"],
@@ -456,7 +481,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """Measured aging analytics for the physical battery profiles, side by side."""
         refresh_offline(db, s)
         with db.read() as conn:
-            rows = [dict(r) for r in conn.execute("SELECT * FROM batteries WHERE managed=1 ORDER BY battery_id")]
+            rows = [dict(r) for r in conn.execute("SELECT * FROM batteries WHERE managed=1 AND source=? "
+                                                  "ORDER BY battery_id", (profile_source(s),))]
             out = [aging.battery_aging(conn, b, s) for b in rows]
         for a in out:            # overview keeps payload small; detail endpoint has everything
             a.pop("sessions"), a.pop("trends")
