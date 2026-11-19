@@ -184,7 +184,6 @@ describe("Battery Health Predictions: Experimental Demo Estimate for BAT-A-3000"
     expect(screen.queryByText(/Why Quick Tests give no SoH/)).toBeNull();        // diagnostic panel removed
     expect(screen.queryByText(/Model inputs vs\. Quick Test measurements/)).toBeNull();
     expect(screen.getByText(/not applied \(it needs a complete discharge cycle\)/)).toBeTruthy();   // ML kept separate
-    expect(screen.getByText(/Saved-model predictions — NASA dataset example/)).toBeTruthy();
   });
 
   it("explains the heuristic in a concise method view and never calls it ML", async () => {

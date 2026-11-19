@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import MLValidation from "../pages/MLValidation";
 import type { BatterySummary, DemoEstimate, MlFold } from "../lib/api";
 
@@ -103,63 +103,23 @@ describe("Battery Health Predictions in Sample Demonstration mode", () => {
     expect(screen.queryByText("0.0")).toBeNull();
     expect(screen.queryByText("Method and inputs")).toBeNull();              // formula view does not describe sample values
     expect(screen.getByText(/not applied \(it needs a complete discharge cycle\)/)).toBeTruthy();   // ML kept separate
-    expect(screen.getByText(/Saved-model predictions — NASA dataset example/)).toBeTruthy();
+    expect(screen.getByText("The project uses battery-aging models trained on NASA battery data. The displayed SoH and RUL values are illustrative demonstration results.")).toBeTruthy();
   });
 
-  it("never sends or fetches the sample values", async () => {
+  it("no longer shows the NASA validation section, selectors, held-out results or charts", () => {
+    mockApi([]);
+    render(<MLValidation batteries={[batA(demoEst(0, 0))]} />);
+    for (const t of [/B0005/, /B0006/, /B0018/, /Held-out/, /Model validation on the NASA dataset/, /NASA dataset example/, /Not validated for our batteries/])
+      expect(screen.queryByText(t)).toBeNull();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByRole("slider")).toBeNull();
+  });
+
+  it("makes no requests: the sample values never leave the dashboard", async () => {
     const urls: string[] = [];
     mockApi(urls);
     render(<MLValidation batteries={[batA(demoEst(0, 0))]} />);
-    await waitFor(() => expect(urls.length).toBeGreaterThan(0));
-    expect(urls.every((u) => !/sample/i.test(u))).toBe(true);
-  });
-});
-
-describe("saved ML model demonstration (NASA data, separate from the demo heuristic)", () => {
-  it("runs the saved model on a chosen NASA dataset cycle, beside the held-out model", async () => {
-    const urls: string[] = [];
-    mockApi(urls);
-    render(<MLValidation />);
-    await screen.findByText("Measured (dataset)");
-    expect(urls.some((u) => u.includes("/api/ml-validation/B0006/demo?cycle=50"))).toBe(true);
-    expect(screen.getByText("84.1")).toBeTruthy();
-    expect(screen.getByText(/in-sample/)).toBeTruthy();
-    expect(screen.getByText(/trained on B0005 \+ B0018 only/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Demo cycle"), { target: { value: "120" } });
-    await waitFor(() => expect(urls.some((u) => u.includes("/demo?cycle=120"))).toBe(true));
-  });});
-
-describe("ML validation page", () => {
-  it("shows the disclaimer, protocol and observed EOL for the held-out cell", async () => {
-    mockApi([]);
-    render(<MLValidation />);
-    expect(screen.getByText(/Not validated for our batteries/)).toBeTruthy();
-    await waitFor(() => expect(screen.getByText("Cycle 125")).toBeTruthy());
-    expect(screen.getByText("observed")).toBeTruthy();
-    expect(screen.getByText(/2500 mAh and 3000 mAh/)).toBeTruthy();
-    expect(screen.getByText(/reproduce/)).toBeTruthy();
-    expect(screen.getByText(/Trained on B0006 \+ B0018 only/)).toBeTruthy();
-  });
-
-  it("reports classifier and regressor separately and admits when the baseline wins", async () => {
-    const urls: string[] = [];
-    mockApi(urls);
-    render(<MLValidation />);
-    await screen.findByText("Cycle 125");
-    fireEvent.click(within(screen.getByRole("radiogroup", { name: "NASA cell" })).getByRole("radio", { name: "B0006" }));
-    await waitFor(() => expect(urls.some((u) => u.endsWith("/api/ml-validation/B0006"))).toBe(true));
-    await screen.findByText("Cycle 109");
-    expect(screen.getByText(/RUL stage 1 — EOL classifier/)).toBeTruthy();
-    expect(screen.getByText(/RUL stage 2 — regressor alone/)).toBeTruthy();
-    expect(screen.getAllByText("baseline better").length).toBeGreaterThanOrEqual(1);   // two-stage 8.8 vs baseline 1.3
-  });
-
-  it("marks a censored cell and a classifier that never detects EOL", async () => {
-    mockApi([]);
-    render(<MLValidation />);
-    await screen.findByText("Cycle 125");
-    fireEvent.click(within(screen.getByRole("radiogroup", { name: "NASA cell" })).getByRole("radio", { name: "B0018" }));
-    await screen.findByText("censored", { selector: "span" });
-    expect(screen.getByText("never")).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(urls).toEqual([]);
   });
 });

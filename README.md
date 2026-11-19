@@ -42,7 +42,7 @@ empty value to show all profiles again). BAT-B-3000 and BAT-C-2500 stay in the d
 | **Overview** | Live sensor readings (voltage, current, temperature, power), sensor and cell-presence status, live charts, and the two **Experimental Demo Estimate** scores. |
 | **Quick Tests** | The 3 × 300 s protocol: progress, the completed tests and their results, live countdown for a new test, the physical-disconnect step, validity checks and CSV export. |
 | **Battery Analysis** | Quick Test results (averages ± range), per-test trends, measured discharge throughput, measured full capacity (only from complete discharges), reading history with CSV export, and a collapsed *Device, alerts and records* section (device assignment, alert thresholds, system status, archived records). |
-| **Battery Health Predictions** | The Experimental Demo Estimate (Demo SoH / Demo RUL) with a short method view, then the separate saved-ML-model demonstration on NASA dataset cycles and the leave-one-cell-out validation. |
+| **Battery Health Predictions** | The BAT-A-3000 SoH and RUL cards and summary table (Sample Demonstration values while `SAMPLE_MODE` is on). The NASA model validation is no longer shown in the dashboard; it stays available through `GET /api/ml-validation`, `results/` and the Machine-learning summary below. |
 
 Retired IDs such as `CELL-18650-01` are kept read-only under Battery Analysis → Device, alerts and records.
 
@@ -193,7 +193,7 @@ banner and simulated profiles are tagged SIMULATED. See [docs/SIMULATION.md](doc
 ```bash
 pytest iot/tests -q                 # backend: 182 tests, includes the simulation run
 python -m iot.simulation.run        # 52 end-to-end checks
-cd dashboard && npm test            # dashboard: 57 tests (vitest + jsdom)
+cd dashboard && npm test            # dashboard: 54 tests (vitest + jsdom)
 cd dashboard && npm run build       # typecheck + production build
 ```
 
