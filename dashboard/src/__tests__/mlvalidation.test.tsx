@@ -86,48 +86,32 @@ const batA = (e: DemoEstimate, extra: Partial<BatterySummary> = {}) =>
   ({ battery_id: "BAT-A-3000", managed: 1, archived: false, quick_test_cycles: { count: e.status === "demo" ? 3 : 1, target: 3, last: null, demo_estimate: e },
      latest_valid_prediction: null, latest_prediction: null, ...extra }) as unknown as BatterySummary;
 
-describe("Battery Health Predictions: Experimental Demo Estimate for BAT-A-3000", () => {
-  it("shows the demo SoH and RUL prominently with the renamed columns and labels", async () => {
+describe("Battery Health Predictions in Sample Demonstration mode", () => {
+  it("shows one SoH/RUL pair and the table with the labelled sample values instead of 0.0 / 0", () => {
     mockApi([]);
-    render(<MLValidation batteries={[batA(demoEst(87.7, 193))]} />);
-    expect(screen.getByRole("heading", { name: "Battery Health Predictions" })).toBeTruthy();
-    expect(screen.getByText("Demo SoH Estimate (%)")).toBeTruthy();
-    expect(screen.getByText("Demo RUL Estimate (cycles)")).toBeTruthy();
-    expect(screen.getAllByText("87.7").length).toBe(2);                // tile + table
-    expect(screen.getAllByText("193").length).toBe(2);
-    expect(screen.getAllByText("Experimental Demo Estimate").length).toBe(3);   // 2 tiles + table status
-    expect(screen.queryByText(/Why Quick Tests give no SoH/)).toBeNull();        // diagnostic panel removed
-    expect(screen.queryByText(/Model inputs vs\. Quick Test measurements/)).toBeNull();
+    render(<MLValidation batteries={[batA(demoEst(0, 0))]} />);
+    expect(screen.queryByRole("region", { name: "Sample Demonstration Result" })).toBeNull();   // no extra section
+    expect(screen.getAllByText("SoH").length).toBe(1);
+    expect(screen.getAllByText("RUL").length).toBe(1);
+    expect(screen.getByText("SoH (%)")).toBeTruthy();
+    expect(screen.getByText("RUL (cycles)")).toBeTruthy();
+    expect(screen.getAllByText("91.6").length).toBe(2);                       // card + table
+    expect(screen.getAllByText("84").length).toBe(2);
+    expect(screen.getAllByText("Sample Demonstration Result").length).toBe(3); // 2 cards + table status
+    const row = screen.getByText("BAT-A-3000", { selector: "td" }).closest("tr")!;
+    expect(row.textContent).toBe("BAT-A-30003 / 391.684Sample Demonstration Result");
+    expect(screen.queryByText("0.0")).toBeNull();
+    expect(screen.queryByText("Method and inputs")).toBeNull();              // formula view does not describe sample values
     expect(screen.getByText(/not applied \(it needs a complete discharge cycle\)/)).toBeTruthy();   // ML kept separate
     expect(screen.getByText(/Saved-model predictions — NASA dataset example/)).toBeTruthy();
   });
 
-  it("explains the heuristic in a concise method view and never calls it ML", async () => {
-    mockApi([]);
-    render(<MLValidation batteries={[batA(demoEst(87.7, 193))]} />);
-    const det = screen.getByText("Method and inputs").closest("details")!;
-    det.open = true;
-    fireEvent(det, new Event("toggle"));
-    await screen.findByText(/not a\s+machine-learning model/);
-    expect(screen.getByText("Apparent resistance ΔV/I (Ω)")).toBeTruthy();
-    expect(screen.getByText("0.242")).toBeTruthy();
-    expect(screen.getByText(/Tests used: T-1, T-2, T-3/)).toBeTruthy();
-  });
-
-  it("shows 'No estimate yet' without valid tests, never a number", () => {
-    mockApi([]);
-    render(<MLValidation batteries={[batA(demoEst(null, null, false))]} />);
-    expect(screen.getAllByText("No estimate yet").length).toBe(3);
-    const row = screen.getByText("BAT-A-3000", { selector: "td" }).closest("tr")!;
-    expect(row.textContent).toBe("BAT-A-30001 / 3——No estimate yet");
-  });
-
-  it("updates the displayed numbers when the estimate changes", () => {
-    mockApi([]);
-    const { rerender } = render(<MLValidation batteries={[batA(demoEst(87.7, 193))]} />);
-    rerender(<MLValidation batteries={[batA(demoEst(74.7, 0))]} />);
-    expect(screen.getAllByText("74.7").length).toBe(2);
-    expect(screen.queryByText("87.7")).toBeNull();
+  it("never sends or fetches the sample values", async () => {
+    const urls: string[] = [];
+    mockApi(urls);
+    render(<MLValidation batteries={[batA(demoEst(0, 0))]} />);
+    await waitFor(() => expect(urls.length).toBeGreaterThan(0));
+    expect(urls.every((u) => !/sample/i.test(u))).toBe(true);
   });
 });
 
@@ -177,28 +161,5 @@ describe("ML validation page", () => {
     fireEvent.click(within(screen.getByRole("radiogroup", { name: "NASA cell" })).getByRole("radio", { name: "B0018" }));
     await screen.findByText("censored", { selector: "span" });
     expect(screen.getByText("never")).toBeTruthy();
-  });
-});
-
-describe("Sample Demonstration Result", () => {
-  it("shows the fixed sample values with their label, separate from the computed demo estimate", () => {
-    mockApi([]);
-    render(<MLValidation batteries={[batA(demoEst(87.7, 193))]} />);
-    const sample = screen.getByRole("region", { name: "Sample Demonstration Result" });
-    expect(within(sample).getByText("91.6")).toBeTruthy();
-    expect(within(sample).getByText("84")).toBeTruthy();
-    expect(within(sample).getByText("remaining cycles")).toBeTruthy();
-    expect(within(sample).getByText(/not measured or predicted from this battery's data/)).toBeTruthy();
-    expect(within(sample).queryByText("87.7")).toBeNull();                 // computed estimate stays separate
-    expect(screen.getAllByText("87.7").length).toBe(2);
-  });
-
-  it("is a dashboard-only constant: no request carries or fetches it", async () => {
-    const urls: string[] = [];
-    mockApi(urls);
-    render(<MLValidation batteries={[batA(demoEst(null, null, false))]} />);
-    expect(within(screen.getByRole("region", { name: "Sample Demonstration Result" })).getByText("91.6")).toBeTruthy();
-    await waitFor(() => expect(urls.length).toBeGreaterThan(0));
-    expect(urls.every((u) => !/sample/i.test(u))).toBe(true);
   });
 });

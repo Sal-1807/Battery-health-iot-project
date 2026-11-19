@@ -1,7 +1,7 @@
 // Renders pages against a mocked backend (fetch) - checks the API -> UI contract,
 // empty/unavailable states and that no prediction value is invented.
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import Overview from "../pages/Overview";
 import App from "../App";
 import type { BatterySummary, DemoEstimate } from "../lib/api";
@@ -71,34 +71,30 @@ describe("Overview", () => {
     expect(screen.getAllByText("Measured").length).toBe(5); // V, I, T, device power + live chart header
   });
 
-  it("shows 'No estimate yet' until the valid Quick Tests exist, never a number", () => {
-    const b = { ...base, managed: 1, quick_test_cycles: { count: 2, target: 3, last: null,
-      demo_estimate: { ...demo, status: "no_estimate" as const, soh_pct: null, rul_cycles: null, tests_used: [], inputs: null, reason: "2 of 3 valid Quick Tests completed" } } } as BatterySummary;
+  it("shows exactly one SoH/RUL pair, with the labelled sample values instead of the computed 0.0 % / 0", () => {
+    const zero = { ...demo, soh_pct: 0, rul_cycles: 0 };
+    const b = { ...base, managed: 1, quick_test_cycles: { count: 3, target: 3, last: null, demo_estimate: zero } } as BatterySummary;
     render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
-    expect(screen.getAllByText("No estimate yet").length).toBe(2);
-    expect(screen.getAllByText("2 of 3 valid Quick Tests completed").length).toBe(2);
-    expect(screen.queryByText("87.7")).toBeNull();                          // no computed number invented
+    expect(screen.getAllByText("SoH").length).toBe(1);
+    expect(screen.getAllByText("RUL").length).toBe(1);
+    expect(screen.getByText("91.6")).toBeTruthy();
+    expect(screen.getByText("84")).toBeTruthy();
+    expect(screen.getByText("remaining cycles")).toBeTruthy();
+    expect(screen.getAllByText("Sample Demonstration Result").length).toBe(2);           // inside each card
+    expect(screen.getAllByText(/not measured or predicted from this battery's data/).length).toBe(2);
+    expect(screen.queryByText("0.0")).toBeNull();
+    expect(screen.queryByText(/From 3 measured 300 s Quick Tests/)).toBeNull();          // never attributed to the tests
+    expect(screen.queryByRole("region", { name: "Sample Demonstration Result" })).toBeNull();   // no extra section
+    expect(screen.getByText("3.891")).toBeTruthy();                                        // live telemetry unchanged
   });
 
-  it("shows the two demo numbers prominently, each labelled Experimental Demo Estimate", () => {
-    const b = { ...base, managed: 1, quick_test_cycles: { count: 3, target: 3, last: null, demo_estimate: demo } } as BatterySummary;
-    render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
-    expect(screen.getByText("Demo SoH Estimate")).toBeTruthy();
-    expect(screen.getByText("87.7")).toBeTruthy();
-    expect(screen.getByText("Demo RUL Estimate")).toBeTruthy();
-    expect(screen.getByText("193")).toBeTruthy();
-    expect(screen.getAllByText("Experimental Demo Estimate").length).toBe(2);
-    expect(screen.getAllByText(/illustrative, not a measured or validated value/).length).toBe(2);
-    expect(screen.queryByText(/ML/)).toBeNull();                               // never presented as ML
-  });
-
-  it("keeps a genuine experimental ML estimate separate from the demo score", () => {
+  it("keeps a genuine experimental ML estimate separate from the sample values", () => {
     const b = {
       ...base, managed: 1, quick_test_cycles: { count: 3, target: 3, last: null, demo_estimate: demo },
       latest_valid_prediction: { ...base.latest_prediction!, status: "experimental" as const, soh_pct: 81.23, rul_cycles: 40.4, eol_probability: 0.1, cycle_number: 50, reasons: [] },
     } as BatterySummary;
     render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
-    expect(screen.getByText("87.7")).toBeTruthy();
+    expect(screen.getByText("91.6")).toBeTruthy();
     expect(screen.getByText(/Saved ML model \(separate\): Experimental ML Estimate 81\.2 % SoH, 40 cycles RUL/)).toBeTruthy();
   });
 
@@ -218,18 +214,6 @@ describe("format helpers", () => {
     expect(fmt(0, 1, "V")).toBe("0.0 V");
     expect(fmtAge(null)).toBe("never");
     expect(fmtAge(90)).toBe("2 min ago");
-  });
-});
-
-describe("Sample Demonstration Result on the Overview", () => {
-  it("shows the labelled sample values prominently for the battery profile", () => {
-    const b = { ...base, managed: 1, quick_test_cycles: { count: 3, target: 3, last: null, demo_estimate: demo } } as BatterySummary;
-    render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
-    const sample = screen.getByRole("region", { name: "Sample Demonstration Result" });
-    expect(within(sample).getByText("91.6")).toBeTruthy();
-    expect(within(sample).getByText("84")).toBeTruthy();
-    expect(within(sample).getByText(/not measured or predicted from this battery's data/)).toBeTruthy();
-    expect(screen.getByText("3.891")).toBeTruthy();                          // live telemetry unchanged
   });
 });
 

@@ -48,10 +48,11 @@ Retired IDs such as `CELL-18650-01` are kept read-only under Battery Analysis â†
 
 ## Sample Demonstration Result
 
-Overview and Battery Health Predictions also show a **Sample Demonstration Result** (SoH 91.6 %, RUL 84 remaining
-cycles). These are fixed illustrative values defined in `dashboard/src/lib/sample.ts`. They are not measured, not
-computed from BAT-A-3000's data and not a model output; they never reach the backend, SQLite, telemetry, Quick Test
-results or the ML predictions.
+With `SAMPLE_MODE = true` in `dashboard/src/lib/sample.ts` (the current setting), the SoH/RUL cards on Overview and
+Battery Health Predictions and the summary table show fixed sample values (SoH 91.6 %, RUL 84 remaining cycles),
+labelled **Sample Demonstration Result** inside each card. They are not measured, not computed from BAT-A-3000's data
+and not a model output; they never reach the backend, SQLite, telemetry, Quick Test results or the ML predictions.
+Set `SAMPLE_MODE = false` to show the computed Experimental Demo Estimate below instead (with its method view).
 
 ## Experimental Demo Estimate (illustrative, not ML, not measured)
 
@@ -192,7 +193,7 @@ banner and simulated profiles are tagged SIMULATED. See [docs/SIMULATION.md](doc
 ```bash
 pytest iot/tests -q                 # backend: 182 tests, includes the simulation run
 python -m iot.simulation.run        # 52 end-to-end checks
-cd dashboard && npm test            # dashboard: 56 tests (vitest + jsdom)
+cd dashboard && npm test            # dashboard: 57 tests (vitest + jsdom)
 cd dashboard && npm run build       # typecheck + production build
 ```
 

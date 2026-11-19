@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { FlaskConical, ShieldAlert } from "lucide-react";
 import type { PageProps } from "../App";
 import { api, type BatterySummary, type MlFold, type RegMetrics } from "../lib/api";
-import { DemoEstimateTiles, DemoPill, SampleResultTiles } from "../components/demo";
+import { DemoEstimateTiles, ResultPill } from "../components/demo";
+import { SAMPLE_MODE, SAMPLE_RESULT } from "../lib/sample";
 import { usePoll } from "../lib/hooks";
 import { fmt } from "../lib/format";
 import { CycleChart } from "../components/charts";
@@ -100,22 +101,24 @@ function DemoEstimates({ batteries }: { batteries: BatterySummary[] }) {
     <section className="space-y-4">
       <h2 className="text-base font-semibold">{main.battery_id}</h2>
       <DemoEstimateTiles e={e} />
-      <Table head={["Battery", "Quick Tests", "Demo SoH Estimate (%)", "Demo RUL Estimate (cycles)", "Status"]}>
+      <Table head={["Battery", "Quick Tests", SAMPLE_MODE ? "SoH (%)" : "Demo SoH Estimate (%)", SAMPLE_MODE ? "RUL (cycles)" : "Demo RUL Estimate (cycles)", "Status"]}>
         {rows.map((b) => {
           const d = b.quick_test_cycles?.demo_estimate;
-          const ok = d?.status === "demo";
+          const ok = SAMPLE_MODE || d?.status === "demo";
+          const soh = SAMPLE_MODE ? SAMPLE_RESULT.soh_pct : d?.soh_pct;
+          const rul = SAMPLE_MODE ? SAMPLE_RESULT.rul_cycles : d?.rul_cycles;
           return (
             <tr key={b.battery_id}>
               <td className="px-3 py-2 font-medium text-ink">{b.battery_id}</td>
               <td className="px-3 py-2">{Math.min(b.quick_test_cycles?.count ?? 0, b.quick_test_cycles?.target ?? 3)} / {b.quick_test_cycles?.target ?? 3}</td>
-              <td className="px-3 py-2 text-base font-semibold text-ink">{ok ? fmt(d!.soh_pct, 1) : "—"}</td>
-              <td className="px-3 py-2 text-base font-semibold text-ink">{ok ? d!.rul_cycles : "—"}</td>
-              <td className="px-3 py-2">{ok ? <DemoPill /> : <Pill tone="neutral">No estimate yet</Pill>}</td>
+              <td className="px-3 py-2 text-base font-semibold text-ink">{ok ? fmt(soh, 1) : "—"}</td>
+              <td className="px-3 py-2 text-base font-semibold text-ink">{ok ? rul : "—"}</td>
+              <td className="px-3 py-2">{ok ? <ResultPill /> : <Pill tone="neutral">No estimate yet</Pill>}</td>
             </tr>
           );
         })}
       </Table>
-      {e?.status === "demo" && e.inputs && (
+      {!SAMPLE_MODE && e?.status === "demo" && e.inputs && (
         <Collapsible title="Method and inputs">
           <p className="text-sm text-ink-2">
             A documented arithmetic heuristic (<code className="font-mono text-xs">iot/backend/demo_estimate.py</code>), not a
@@ -226,7 +229,6 @@ export default function MLValidation({ batteries = [] }: Partial<PageProps>) {
         <FlaskConical size={18} className="text-ink-3" /> Battery Health Predictions
       </h1>
 
-      <SampleResultTiles />
       <DemoEstimates batteries={batteries} />
       <ModelDemo />
 
