@@ -219,3 +219,38 @@ def session_out(row: Optional[sqlite3.Row | dict], s: Settings, cutoff_v: Option
         "temperature) has not been validated, so this is not a validated capacity measurement."
     )
     return d
+
+
+def battery_stats(conn: sqlite3.Connection, battery: dict, s: Settings) -> dict:
+    """Per-battery totals from measured sessions.
+
+    * equivalent_full_cycles (EFC) = total discharged charge / RATED capacity of
+      THIS battery. A throughput measure: 10 sessions of 300 mAh on a 3000 mAh
+      cell = 1.0 EFC. It is not a count of completed cycles.
+    * completed_cycles = sessions that ran from a rested full charge to the
+      cutoff voltage without telemetry gaps (kind full_range_unvalidated), i.e.
+      a completed experimental charge-discharge cycle. A short or partial
+      session never counts.
+    * capacity_measurements = the charge of those completed cycles (an
+      unvalidated protocol; reported as measured mAh, never as SoH).
+    """
+    rows = conn.execute(f"SELECT {SESSION_COLS} FROM discharge_sessions WHERE battery_id=? ORDER BY id",
+                        (battery["battery_id"],)).fetchall()
+    rated = battery.get("rated_capacity_ah")
+    out = [session_out(r, s, battery.get("cutoff_voltage_v"), rated) for r in rows]
+    total = sum(x["charge_mah"] for x in out)
+    full = [x for x in out if x["kind"] == "full_range_unvalidated"]
+    return {
+        "n_sessions": len(out),
+        "n_partial_sessions": sum(1 for x in out if x["kind"] == "partial"),
+        "total_discharged_mah": total,
+        "total_energy_wh": sum(x["energy_wh"] for x in out),
+        "rated_capacity_mah": rated * 1000 if rated else None,
+        "equivalent_full_cycles": (total / (rated * 1000)) if rated else None,
+        "completed_cycles": len(full),
+        "capacity_measurements": [{"session_id": x["id"], "start_ts": x["start_ts"], "charge_mah": x["charge_mah"],
+                                   "uncertainty_mah": x["uncertainty_mah"], "energy_wh": x["energy_wh"]} for x in full],
+        "last_session_start": out[-1]["start_ts"] if out else None,
+        "notes": "EFC = total measured discharge / this battery's rated capacity (throughput, not a cycle count). "
+                 "Completed cycles = rested-full to cutoff without gaps (unvalidated protocol).",
+    }

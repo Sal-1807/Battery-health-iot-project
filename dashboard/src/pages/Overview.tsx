@@ -203,6 +203,25 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
         <Pill tone={status.tone}>{status.text}</Pill>
       </div>
 
+      {b.managed ? (
+        <p className="text-xs text-ink-2">
+          Physical profile · rated {fmt((b.rated_capacity_ah ?? 0) * 1000, 0)} mAh (label) ·{" "}
+          {b.assignment ? (
+            <>
+              selected as connected on <span className="text-ink">{b.assignment.device_id}</span> since{" "}
+              {fmtTime(b.assignment.start_ts, true)}
+            </>
+          ) : (
+            <span className="text-warning">not selected as connected: new readings are not recorded to this battery</span>
+          )}
+          {b.stats && (
+            <>
+              {" "}· EFC {fmt(b.stats.equivalent_full_cycles, 3)} · completed cycles {b.stats.completed_cycles}
+            </>
+          )}
+        </p>
+      ) : null}
+
       {b.source === "nasa_replay" ? (
         <Card title="Telemetry" subtitle="Cycle-level NASA replay — no instantaneous sensor readings for this battery.">
           <p className="text-sm text-ink-2">

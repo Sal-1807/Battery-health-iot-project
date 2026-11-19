@@ -87,6 +87,17 @@ Trade-off, stated plainly: a resting cell that nobody has confirmed gets **no vo
 2. **A firmware-switched test load**: a MOSFET plus resistor that briefly draws a known current, which creates current evidence on demand. Like any load on the cell, this needs the protection in §5.
 3. **A mechanical presence switch** in the battery holder.
 
+## 3b. Swapping between BAT-A-3000, BAT-B-3000 and BAT-C-2500
+
+The firmware's `BATTERY_ID` is fixed in `config.h` and can't know which cell is on the clips, so the dashboard records it:
+
+1. Stop any load and disconnect the current cell.
+2. Connect the next cell.
+3. Dashboard → **Batteries** → *Physically connected battery* → choose it → **Switch** → **Confirm switch**.
+4. Verify presence on the Overview page: confirm after checking the voltage with a multimeter, or let load current verify it.
+
+From the moment of the switch, readings are stored under the selected battery. If no battery is selected, readings go to `UNASSIGNED-<device>` and are never attributed to a profile.
+
 ## 3a. Without Wi-Fi: USB serial bridge
 
 Use this when the ESP32 cannot join a network. For example, campus Wi-Fi that uses

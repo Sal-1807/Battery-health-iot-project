@@ -143,3 +143,12 @@ Reported by the team from the Serial Monitor:
 - **History:** sessions persist after the load stops, and the next session starts from 0.
 - **Interpretation:** a session's charge is not the battery's capacity, and SoH/RUL are not derived from it.
 - **Unchanged:** protection thresholds; no discharge control was added.
+
+## 11. Multiple physical batteries — added 2026-11-19
+
+- **Profiles:** `BAT-A-3000`, `BAT-B-3000`, `BAT-C-2500`, created by migration v6. Existing data, including `CELL-18650-01`, is kept and is not re-attributed.
+- **Routing:** readings follow time-ranged device assignments selected in the dashboard (Batteries page). Uncovered readings go to `UNASSIGNED-<device>`.
+- **Switching:** ends sessions and segments with `battery_switched` and clears presence evidence.
+- **Cycle counts:** EFC (throughput ÷ own rating) is tracked separately from completed experimental cycles (rested full charge to cutoff, no gaps).
+- **SoH/RUL:** never produced for physical profiles. The NASA replay demonstration is unchanged.
+- **Not covered:** charging is not instrumented (there is no charge-current path through the INA219). A "completed cycle" is therefore inferred from a rested full-charge voltage before the discharge, not from a measured charge.

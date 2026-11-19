@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS batteries (
@@ -212,7 +212,39 @@ CREATE TABLE IF NOT EXISTS discharge_sessions (
 CREATE INDEX IF NOT EXISTS ix_sessions_battery ON discharge_sessions(battery_id, id);
 """
 
-_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4, 5: _SCHEMA_V5}
+# v6: multiple physical batteries on one device (assignments.py). Existing
+# batteries and readings are kept exactly as they are and are NOT re-attributed.
+_SCHEMA_V6 = """
+ALTER TABLE batteries ADD COLUMN managed INTEGER NOT NULL DEFAULT 0;   -- 1 = physical battery profile
+ALTER TABLE readings ADD COLUMN reported_battery_id TEXT;              -- what the firmware claimed
+ALTER TABLE readings ADD COLUMN routed_by TEXT;                        -- assignment | unassigned | firmware
+CREATE TABLE IF NOT EXISTS device_assignments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id   TEXT NOT NULL,
+    battery_id  TEXT NOT NULL,
+    start_ms    INTEGER NOT NULL,
+    start_ts    TEXT NOT NULL,
+    end_ms      INTEGER,              -- NULL = currently connected
+    end_ts      TEXT,
+    note        TEXT,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_assign_device ON device_assignments(device_id, start_ms);
+CREATE INDEX IF NOT EXISTS ix_assign_battery ON device_assignments(battery_id, start_ms);
+INSERT OR IGNORE INTO batteries(battery_id, label, chemistry, rated_capacity_ah, nominal_voltage_v, source, notes,
+                                created_at, managed)
+VALUES
+ ('BAT-A-3000', 'Battery A - 3000 mAh', 'Li-ion 18650', 3.0, 3.7, 'hardware', 'Physical cell profile (label rating)',
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 1),
+ ('BAT-B-3000', 'Battery B - 3000 mAh', 'Li-ion 18650', 3.0, 3.7, 'hardware', 'Physical cell profile (label rating)',
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 1),
+ ('BAT-C-2500', 'Battery C - 2500 mAh', 'Li-ion 18650', 2.5, 3.7, 'hardware', 'Physical cell profile (label rating)',
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 1);
+UPDATE batteries SET managed=1 WHERE battery_id IN ('BAT-A-3000','BAT-B-3000','BAT-C-2500');
+"""
+
+_MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4, 5: _SCHEMA_V5,
+                               6: _SCHEMA_V6}
 
 
 class Database:

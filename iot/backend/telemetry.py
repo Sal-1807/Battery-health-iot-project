@@ -14,7 +14,8 @@ from .config import Settings
 from .cycles import LIVE_SOURCE, aggregate_live_cycles
 from .db import Database, row_to_dict
 from .model_service import ModelService
-from .sessions import SESSION_COLS, session_out, update_session
+from .assignments import battery_assignment, ensure_unassigned_bucket, resolve_battery
+from .sessions import SESSION_COLS, battery_stats, session_out, update_session
 from .presence import VALID_STATES, battery_detected_for, classify, load_presence, save_presence
 from .schemas import ReadingIn
 
@@ -127,9 +128,19 @@ def ingest(db: Database, s: Settings, models: ModelService, r: ReadingIn,
     now = now or datetime.now(timezone.utc)
     rec = normalise_reading(r, s, now)
     with db.write() as conn:
+        # Which battery this reading belongs to is decided by the device assignment
+        # covering its timestamp, never by guessing (assignments.py).
+        battery_id, routed_by, assignment = resolve_battery(conn, rec["device_id"], rec["battery_id"], rec["ts_ms"])
+        rec["reported_battery_id"], rec["battery_id"], rec["routed_by"] = rec["battery_id"], battery_id, routed_by
+        if routed_by == "unassigned":
+            ensure_unassigned_bucket(conn, battery_id, rec["device_id"], rec["received_at"])
         ensure_battery(conn, rec["battery_id"], rec["source"])
+        # Only readings from the current connection period count as "previous": a
+        # reading from before a battery swap must never be paired with this one.
+        since = assignment["start_ms"] if assignment else -1
         prev = conn.execute("SELECT ts_ms, current_a, voltage_v, power_w, temperature_c FROM readings "
-                            "WHERE battery_id=? ORDER BY ts_ms DESC LIMIT 1", (rec["battery_id"],)).fetchone()
+                            "WHERE battery_id=? AND ts_ms>=? AND ts_ms<? ORDER BY ts_ms DESC LIMIT 1",
+                            (rec["battery_id"], since, rec["ts_ms"])).fetchone()
         presence = load_presence(conn, rec["battery_id"])
         state, new_presence, events = classify(rec, dict(prev) if prev else None, presence, s)
         rec["cell_state"] = state
@@ -177,11 +188,12 @@ def ingest(db: Database, s: Settings, models: ModelService, r: ReadingIn,
 
     return {"status": "stored", "reading_id": reading_id, "ts": rec["ts"],
             "timestamp_source": rec["timestamp_source"], "cell_state": rec["cell_state"],
+            "battery_id": rec["battery_id"], "routed_by": rec["routed_by"],
             "flags": rec["flags"], "cycles_closed": closed, "session_event": session_event}
 
 
 # ------------------------------------------------------------------ queries
-READING_FIELDS = ("id, battery_id, device_id, source, transport, ts, timestamp_source, received_at, voltage_v, current_a, "
+READING_FIELDS = ("id, battery_id, reported_battery_id, routed_by, device_id, source, transport, ts, timestamp_source, received_at, voltage_v, current_a, "
                   "temperature_c, power_w, power_source, seq, ina219_status, ds18b20_status, battery_detected, "
                   "cell_state, flags")
 
@@ -233,6 +245,8 @@ def battery_summary(conn: sqlite3.Connection, b: dict, now: datetime, s: Optiona
         "n_complete_cycles": n_cyc["c"] or 0,
         "active_session": session if session and session["status"] == "active" else None,
         "last_session": session,
+        "assignment": battery_assignment(conn, b["battery_id"]),
+        "stats": battery_stats(conn, b, s),
     }
 
 

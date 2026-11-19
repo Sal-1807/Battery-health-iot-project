@@ -24,9 +24,10 @@ from .cycles import aggregate_live_cycles, insert_cycle_features, store_predicti
 from .db import Database, row_to_dict
 from .model_service import ModelService
 from .nasa import NasaData
-from .sessions import SESSION_COLS, session_out
+from .sessions import SESSION_COLS, battery_stats, session_out
+from .assignments import active_assignment, battery_assignment, switch_assignment
 from .presence import Presence, load_presence, plausible, reclassify_history, save_presence
-from .schemas import BatteryUpsert, CycleIn, PresenceIn, ReadingBatchIn, ReadingIn, Thresholds
+from .schemas import BatteryUpsert, CycleIn, DeviceAssignmentIn, PresenceIn, ReadingBatchIn, ReadingIn, Thresholds
 from .telemetry import battery_summary, ensure_battery, history, ingest, parse_iso
 
 log = logging.getLogger("bhm")
@@ -160,6 +161,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             b = _battery(conn, battery_id)
             if b["source"] == "nasa_replay":
                 raise HTTPException(400, "NASA replay batteries have no live cell")
+            if b.get("managed") and body.confirmed and battery_assignment(conn, battery_id) is None:
+                raise HTTPException(409, f"'{battery_id}' is not selected as the connected battery on any device. "
+                                         f"Select it first; selecting a profile and confirming the cell are separate steps.")
             if not body.confirmed:
                 save_presence(conn, battery_id, Presence(note=body.note))
                 return {"battery_id": battery_id, "presence": load_presence(conn, battery_id).__dict__}
@@ -177,6 +181,72 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             p = Presence("operator", last["ts"], last["ts_ms"], body.note)
             save_presence(conn, battery_id, p)
             return {"battery_id": battery_id, "presence": p.__dict__, "confirmed_at_voltage_v": last["voltage_v"]}
+
+    # ------------------------------------------------------------ devices / multi-battery
+    @app.get("/api/devices", tags=["devices"])
+    def list_devices():
+        with db.read() as conn:
+            ids = [r["device_id"] for r in conn.execute(
+                "SELECT device_id FROM devices UNION SELECT device_id FROM device_assignments ORDER BY 1").fetchall()]
+            out = []
+            for d in ids:
+                row = conn.execute("SELECT device_id, last_seen_at, firmware_version FROM devices WHERE device_id=?",
+                                   (d,)).fetchone()
+                out.append({"device_id": d, "last_seen_at": row["last_seen_at"] if row else None,
+                            "firmware_version": row["firmware_version"] if row else None,
+                            "assignment": active_assignment(conn, d)})
+        return {"devices": out}
+
+    @app.put("/api/devices/{device_id}/assignment", tags=["devices"])
+    def set_assignment(device_id: str, body: DeviceAssignmentIn):
+        """Select the physical battery connected to a device (``battery_id: null`` = none).
+
+        Ends the previous battery's recording session, starts recording to the new
+        profile from now, and clears presence evidence on both: selecting a profile
+        does not prove the cell is connected.
+        """
+        with db.write() as conn:
+            return switch_assignment(conn, device_id, body.battery_id, body.note, s)
+
+    @app.get("/api/devices/{device_id}/assignments", tags=["devices"])
+    def assignment_history(device_id: str, limit: int = Query(200, ge=1, le=5000)):
+        with db.read() as conn:
+            rows = conn.execute("SELECT * FROM device_assignments WHERE device_id=? ORDER BY start_ms DESC LIMIT ?",
+                                (device_id, limit)).fetchall()
+        return {"device_id": device_id, "assignments": [dict(r) for r in rows]}
+
+    @app.get("/api/battery/{battery_id}/stats", tags=["sessions"])
+    def get_stats(battery_id: str):
+        refresh_offline(db, s)
+        with db.read() as conn:
+            b = _battery(conn, battery_id)
+            hist = conn.execute("SELECT * FROM device_assignments WHERE battery_id=? ORDER BY start_ms DESC",
+                                (battery_id,)).fetchall()
+            return {"battery_id": battery_id, "stats": battery_stats(conn, b, s),
+                    "assignments": [dict(r) for r in hist]}
+
+    @app.get("/api/batteries/compare", tags=["batteries"])
+    def compare(include_all: bool = False):
+        """Side-by-side measured statistics for the physical battery profiles."""
+        refresh_offline(db, s)
+        with db.read() as conn:
+            q = "SELECT * FROM batteries" + ("" if include_all else " WHERE managed=1") + " ORDER BY battery_id"
+            rows = [dict(r) for r in conn.execute(q).fetchall()]
+            out = []
+            for b in rows:
+                last = conn.execute("SELECT ts, cell_state FROM readings WHERE battery_id=? ORDER BY ts_ms DESC LIMIT 1",
+                                    (b["battery_id"],)).fetchone()
+                n = conn.execute("SELECT COUNT(*) AS n FROM readings WHERE battery_id=?", (b["battery_id"],)).fetchone()["n"]
+                out.append({"battery_id": b["battery_id"], "label": b["label"], "managed": bool(b["managed"]),
+                            "rated_capacity_mah": b["rated_capacity_ah"] * 1000 if b["rated_capacity_ah"] else None,
+                            "assignment": battery_assignment(conn, b["battery_id"]),
+                            "presence_evidence": b["presence_evidence"],
+                            "last_reading_ts": last["ts"] if last else None,
+                            "last_cell_state": last["cell_state"] if last else None,
+                            "n_readings": n, "stats": battery_stats(conn, b, s),
+                            "soh": "unavailable" if b["managed"] else None})
+        return {"batteries": out,
+                "note": "Measured values per battery. SoH/RUL are not produced for physical profiles."}
 
     @app.get("/api/battery/{battery_id}/latest", tags=["telemetry"])
     def latest(battery_id: str):

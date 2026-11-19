@@ -38,8 +38,9 @@ def test_store_and_read_latest(client):
     assert latest["reading"]["voltage_v"] == 3.89
     assert latest["reading"]["temperature_c"] == 24.5
     assert latest["connection"]["state"] == "online"
-    lst = client.get("/api/batteries").json()["batteries"]
-    assert [b["battery_id"] for b in lst] == ["HW-1"] and lst[0]["source"] == "hardware"
+    lst = {b["battery_id"]: b for b in client.get("/api/batteries").json()["batteries"]}
+    assert lst["HW-1"]["source"] == "hardware"
+    assert {"BAT-A-3000", "BAT-B-3000", "BAT-C-2500"} <= set(lst)      # seeded physical profiles
 
 
 def test_legacy_field_aliases_are_accepted(client):
@@ -178,7 +179,7 @@ def test_device_offline_alert(client):
     from iot.backend.telemetry import ingest
     ingest(app.state.db, app.state.settings, app.state.models, ReadingIn(**reading(ts=past(60))),
            now=datetime.now(timezone.utc) - timedelta(seconds=60))
-    b = client.get("/api/batteries").json()["batteries"][0]
+    b = next(x for x in client.get("/api/batteries").json()["batteries"] if x["battery_id"] == "HW-1")
     assert b["connection"]["state"] in ("stale", "offline")
     off = [a for a in client.get("/api/alerts?status=active").json()["alerts"] if a["type"] == "device_offline"]
     assert len(off) == 1

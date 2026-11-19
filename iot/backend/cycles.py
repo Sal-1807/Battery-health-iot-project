@@ -27,7 +27,7 @@ from .alerts import evaluate_prediction, now_iso
 from .config import Settings
 from .db import row_to_dict
 from .features import compute_segment_features
-from .model_service import ModelService
+from .model_service import ModelService, PredictionResult
 
 LIVE_SOURCE = "live_aggregated"
 
@@ -44,7 +44,7 @@ def _is_discharge(r: dict, s: Settings) -> bool:
             and r["current_a"] is not None and r["current_a"] >= s.discharge_on_a)
 
 
-def detect_segments(rows: list[dict], s: Settings, now_ms: int) -> list[_Segment]:
+def detect_segments(rows: list[dict], s: Settings, now_ms: int, force_close: bool = False) -> list[_Segment]:
     """Return CLOSED segments found in ``rows`` (sorted by ts_ms)."""
     closed: list[_Segment] = []
     seg: Optional[_Segment] = None
@@ -85,6 +85,8 @@ def detect_segments(rows: list[dict], s: Settings, now_ms: int) -> list[_Segment
             close("load_stopped")       # already resting; the tail is just shorter
         elif now_ms - last > max_gap_ms:
             close("device_silent")      # discharge cut off mid-way (power/Wi-Fi loss)
+        elif force_close:
+            close("load_stopped" if seg.load_stop_ms is not None else "battery_switched")
     return closed
 
 
@@ -96,7 +98,7 @@ def _assess(seg: _Segment, feats, s: Settings, cutoff_v: float) -> list[str]:
         notes.append(f"only {n} readings (< {s.min_segment_readings})")
     if duration < s.min_segment_duration_s:
         notes.append(f"duration {duration:.0f} s (< {s.min_segment_duration_s:g} s)")
-    if seg.end_reason == "gap" or seg.end_reason == "device_silent":
+    if seg.end_reason in ("gap", "device_silent", "battery_switched"):
         notes.append(f"segment ended by {seg.end_reason.replace('_', ' ')}, not by the load stopping")
     if feats.voltage_min is None or feats.voltage_min > cutoff_v + 0.02:
         vm = "n/a" if feats.voltage_min is None else f"{feats.voltage_min:.3f} V"
@@ -112,7 +114,14 @@ def _assess(seg: _Segment, feats, s: Settings, cutoff_v: float) -> list[str]:
 
 def store_prediction(conn: sqlite3.Connection, models: ModelService, battery: dict, cycle: dict,
                      data_source: str) -> dict:
-    res = models.predict_cycle(cycle, data_source=data_source, rated_capacity_ah=battery.get("rated_capacity_ah"))
+    if battery.get("managed"):
+        # Real physical cells: the NASA 2.0 Ah models have not been validated on them,
+        # so no SoH/RUL is produced regardless of how the features look.
+        res = PredictionResult(status="unavailable", model_version=models.version, reasons=[
+            "SoH/RUL is not produced for physical battery profiles: the NASA-trained models have not been "
+            "validated on these cells. The NASA demonstration remains available under NASA replay."])
+    else:
+        res = models.predict_cycle(cycle, data_source=data_source, rated_capacity_ah=battery.get("rated_capacity_ah"))
     cur = conn.execute(
         "INSERT INTO predictions(battery_id, cycle_id, cycle_number, created_at, status, model_version, data_source, "
         "soh_pct, eol_probability, eol_predicted, rul_cycles, reasons, warnings, out_of_range, input_features) "
@@ -127,7 +136,7 @@ def store_prediction(conn: sqlite3.Connection, models: ModelService, battery: di
 
 
 def aggregate_live_cycles(conn: sqlite3.Connection, battery_id: str, s: Settings, models: ModelService,
-                          now_ms: Optional[int] = None) -> list[dict]:
+                          now_ms: Optional[int] = None, force_close: bool = False) -> list[dict]:
     """Detect newly closed segments for a battery, store them, predict on complete ones.
 
     ``now_ms=None`` means "data time": the newest reading's timestamp. Ingest uses
@@ -152,7 +161,7 @@ def aggregate_live_cycles(conn: sqlite3.Connection, battery_id: str, s: Settings
 
     cutoff = battery.get("cutoff_voltage_v") or s.default_cutoff_v
     created = []
-    for seg in detect_segments(rows, s, now_ms):
+    for seg in detect_segments(rows, s, now_ms, force_close=force_close):
         feats = compute_segment_features([r["voltage_v"] for r in seg.rows],
                                          [r["current_a"] for r in seg.rows],
                                          [r["temperature_c"] for r in seg.rows])

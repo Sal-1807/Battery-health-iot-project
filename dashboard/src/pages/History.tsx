@@ -46,6 +46,12 @@ export default function HistoryPage({ battery }: PageProps) {
 
   return (
     <div className="space-y-6">
+      <h1 className="text-lg font-semibold">
+        History — {battery.label || battery.battery_id}
+        {battery.rated_capacity_ah != null && (
+          <span className="ml-2 text-sm font-normal text-ink-3">rated {fmt(battery.rated_capacity_ah * 1000, 0)} mAh</span>
+        )}
+      </h1>
       {!isReplay && (
         <div className="flex flex-wrap items-end gap-3">
           <Segmented

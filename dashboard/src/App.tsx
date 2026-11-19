@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Bell, BatteryCharging, Gauge, History, Server, Zap } from "lucide-react";
+import { Activity, Bell, BatteryCharging, Gauge, History, Layers, Server, Zap } from "lucide-react";
 import { api, type BatterySummary } from "./lib/api";
 import { useLocalStorage, usePoll } from "./lib/hooks";
 import { SOURCE_LABEL } from "./lib/format";
@@ -10,9 +10,11 @@ import Health from "./pages/Health";
 import HistoryPage from "./pages/History";
 import Alerts from "./pages/Alerts";
 import SystemPage from "./pages/System";
+import Batteries from "./pages/Batteries";
 
 const PAGES = [
   { id: "overview", label: "Overview", icon: Gauge },
+  { id: "batteries", label: "Batteries", icon: Layers },
   { id: "live", label: "Live", icon: Activity },
   { id: "health", label: "Battery health", icon: BatteryCharging },
   { id: "history", label: "History", icon: History },
@@ -69,8 +71,8 @@ export default function App() {
           </div>
 
           <div className="ml-auto flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-xs text-ink-3">
-              Battery
+            <label className="flex items-center gap-2 text-xs text-ink-3" title="Which battery's data to view. To change the physically connected battery, use the Batteries page.">
+              Viewing
               <select
                 aria-label="Select battery"
                 value={battery?.battery_id ?? ""}
@@ -136,6 +138,14 @@ export default function App() {
         {page === "history" && <HistoryPage {...props} />}
         {page === "alerts" && <Alerts {...props} />}
         {page === "system" && <SystemPage />}
+        {page === "batteries" && (
+          <Batteries
+            selectBattery={(id, p) => {
+              setSelected(id);
+              go((p ?? "overview") as PageId);
+            }}
+          />
+        )}
       </main>
 
       <footer className="mx-auto max-w-7xl px-4 pb-8 pt-2 text-[11px] text-ink-3 sm:px-6">

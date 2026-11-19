@@ -179,3 +179,12 @@ class PresenceIn(BaseModel):
     confirmed: bool = Field(description="true = a cell is physically connected (checked with a meter); "
                                         "false = withdraw any presence evidence")
     note: Optional[str] = Field(default=None, max_length=200)
+
+
+class DeviceAssignmentIn(BaseModel):
+    """Select which physical battery profile is connected to a device (null = none)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    battery_id: Optional[str] = Field(default=None, pattern=ID_PATTERN)
+    note: Optional[str] = Field(default=None, max_length=200)

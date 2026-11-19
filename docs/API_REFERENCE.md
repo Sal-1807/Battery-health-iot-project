@@ -192,3 +192,28 @@ Response: `{"battery_id", "total", "downsampled", "truncated", "points": [...]}`
 ## Not implemented
 
 `/api/v1/*` and `/api/sensor-data` from earlier discussions are not in the repository. Their schemas are unknown, so they were not recreated. If a teammate has that code locally, compare it with the routes above before merging.
+
+## Multiple physical batteries
+
+Profiles `BAT-A-3000` (3000 mAh), `BAT-B-3000` (3000 mAh) and `BAT-C-2500` (2500 mAh) are created by schema migration v6 (`managed = 1`).
+
+| Route | Description |
+|---|---|
+| `GET /api/devices` | Devices and their current assignment (selected battery) |
+| `PUT /api/devices/{device_id}/assignment` | Body `{"battery_id": "BAT-B-3000" \| null, "note": "..."}`. Selects the physically connected battery from now on. Ends the previous battery's discharge session (`end_reason = battery_switched`), closes its open cycle segment as incomplete, and clears presence evidence on both batteries. 409 if the profile is already selected on another device. |
+| `GET /api/devices/{device_id}/assignments` | Assignment history |
+| `GET /api/battery/{id}/stats` | Sessions, total discharged mAh/Wh, `equivalent_full_cycles`, `completed_cycles`, `capacity_measurements`, assignment history |
+| `GET /api/batteries/compare` | The same per profile, side by side |
+
+**Routing.** A reading is stored under the battery whose assignment covers the reading's own timestamp. `battery_id` sent by the firmware is kept as `reported_battery_id`.
+
+- If no assignment covers the reading, a profile **never** receives it: it goes to `UNASSIGNED-<device_id>`.
+- Devices that have never been assigned keep the old behaviour (the firmware's ID).
+
+**Selection vs presence.** Selecting a profile is not presence. Presence still needs load current or `POST /api/battery/{id}/presence`, and the latter is refused for a profile that isn't selected.
+
+**Cycle counting.**
+- **EFC** (equivalent full cycles) = total measured discharge ÷ *that battery's* rated capacity: a throughput figure.
+- **Completed cycles** counts only sessions that ran from a rested full charge (≥ 4.15 V) to the cutoff with no telemetry gaps. A short session never counts as a cycle.
+
+SoH/RUL predictions are always `unavailable` for managed profiles.

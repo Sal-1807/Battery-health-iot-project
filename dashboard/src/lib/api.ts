@@ -133,6 +133,44 @@ export interface DischargeSession {
   interpretation: string;
 }
 
+export interface DeviceAssignment {
+  id: number;
+  device_id: string;
+  battery_id: string;
+  start_ms: number;
+  start_ts: string;
+  end_ms: number | null;
+  end_ts: string | null;
+  note: string | null;
+}
+
+export interface BatteryStats {
+  n_sessions: number;
+  n_partial_sessions: number;
+  total_discharged_mah: number;
+  total_energy_wh: number;
+  rated_capacity_mah: number | null;
+  equivalent_full_cycles: number | null;
+  completed_cycles: number;
+  capacity_measurements: { session_id: number; start_ts: string; charge_mah: number; uncertainty_mah: number; energy_wh: number }[];
+  last_session_start: string | null;
+  notes: string;
+}
+
+export interface CompareRow {
+  battery_id: string;
+  label: string | null;
+  managed: boolean;
+  rated_capacity_mah: number | null;
+  assignment: DeviceAssignment | null;
+  presence_evidence: "current" | "operator" | null;
+  last_reading_ts: string | null;
+  last_cell_state: CellState | null;
+  n_readings: number;
+  stats: BatteryStats;
+  soh: "unavailable" | null;
+}
+
 export interface BatterySummary {
   battery_id: string;
   label: string | null;
@@ -157,6 +195,9 @@ export interface BatterySummary {
   n_complete_cycles: number;
   active_session: DischargeSession | null;
   last_session: DischargeSession | null;
+  managed?: number | boolean;
+  assignment?: DeviceAssignment | null;
+  stats?: BatteryStats;
 }
 
 export interface HistoryPoint {
@@ -350,6 +391,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ confirmed, note: note || null }),
     }),
+  devices: () => request<{ devices: { device_id: string; last_seen_at: string | null; assignment: DeviceAssignment | null }[] }>("/api/devices"),
+  setAssignment: (deviceId: string, batteryId: string | null, note?: string) =>
+    request<{ changed: boolean; ended: { battery_id: string; session_id?: number } | null }>(
+      `/api/devices/${enc(deviceId)}/assignment`,
+      { method: "PUT", body: JSON.stringify({ battery_id: batteryId, note: note || null }) },
+    ),
+  compare: () => request<{ batteries: CompareRow[]; note: string }>("/api/batteries/compare"),
   sessions: (id: string) =>
     request<{ sessions: DischargeSession[]; rated_capacity_mah: number | null; rated_capacity_note: string }>(
       `/api/battery/${enc(id)}/sessions`,
