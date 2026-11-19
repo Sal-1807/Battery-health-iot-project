@@ -308,3 +308,16 @@ Each quick test in `/api/tests` carries a `quick_test` block: `status` (`counted
 ## ML predictions for physical batteries
 
 After each complete discharge cycle the backend calls the saved models through the gate in `iot/backend/model_service.py`. A result is stored as `experimental` only if the cycle is complete, every feature lies inside the NASA training range widened by 10 % of that range, and the cycle number is known; otherwise `unavailable` with the reasons. Physical batteries never get any other status.
+
+## Quick Tests and the ML models (`GET /api/ml/quick-test-assessment?battery_id=`)
+
+For each physical profile (or one battery) this reads the counted Quick Test Cycles and returns:
+
+- `quick_tests.measured`: the genuine per-test values (voltages, drop, mean current/power, max temperature, mAh, Wh);
+- `saved_model.inputs`: each of the 10 saved-model inputs with its NASA training range, the closest Quick Test value
+  (if any), a `kind` (`missing`, `different_quantity`, `out_of_regime`) and the reason it cannot be used;
+- `short_test_model`: checks for whether a defensible short-test model could be built (training windows, operating
+  regime, ground-truth SoH for the cell, observed degradation for RUL) and the conclusion;
+- `soh` / `rul`: always `{"status": "unavailable", "value": null}`. The endpoint never produces an SoH or RUL number.
+
+The logic and the per-input explanations are in `iot/backend/short_test_ml.py`.

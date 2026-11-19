@@ -487,6 +487,21 @@ export interface BatteryTest {
   } | null;
 }
 
+export interface QuickAssessment {
+  battery_id: string;
+  quick_tests: { count: number; target: number; window_s: number;
+    measured: ({ number: number; test_uid: string; completed_at: string; duration_s: number } & Record<string, number | string | null>)[] };
+  saved_model: {
+    usable: boolean; reason: string;
+    inputs: { model_input: string; kind: "missing" | "different_quantity" | "out_of_regime"; quick_metric: string | null;
+              quick_values: (number | null)[]; nasa_training_range: { min: number; max: number } | null;
+              inside_nasa_range: boolean | null; usable_by_saved_model: boolean; reason: string }[];
+  };
+  short_test_model: { defensible_short_test_model: boolean; implemented: boolean; conclusion: string;
+                      checks: { requirement: string; met: boolean; detail: string }[] };
+  soh: { status: "unavailable"; value: null }; rul: { status: "unavailable"; value: null }; note: string;
+}
+
 // ------------------------------------------------------------------ calls
 const q = (params: Record<string, string | number | undefined | null>) => {
   const s = new URLSearchParams();
@@ -546,6 +561,7 @@ export const api = {
   aging: () => request<{ batteries: Aging[]; rules: AgingRules }>("/api/aging"),
   agingDetail: (id: string) => request<Aging & { rules: AgingRules }>(`/api/aging/${enc(id)}`),
   mlValidation: () => request<MlSummary>("/api/ml-validation"),
+  quickAssessment: () => request<{ batteries: QuickAssessment[] }>("/api/ml/quick-test-assessment"),
   mlDemo: (cell: string, cycle: number) =>
     request<{
       cell: string; cycle: number; source: string; features: Record<string, number>;

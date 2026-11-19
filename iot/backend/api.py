@@ -25,7 +25,7 @@ from .config import DEFAULT_DB_PATH, Settings, get_settings
 from .cycles import aggregate_live_cycles, insert_cycle_features, store_prediction
 from .db import Database, row_to_dict
 from .model_service import ModelService
-from . import aging, battery_tests, ml_validation
+from . import aging, battery_tests, ml_validation, short_test_ml
 from .nasa import NasaData
 from .sessions import SESSION_COLS, battery_stats, session_out
 from .assignments import active_assignment, battery_assignment, switch_assignment
@@ -589,6 +589,21 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             return {**aging.battery_aging(conn, b, s), "rules": aging.comparability_rules()}
 
     # ------------------------------------------------------------ NASA ML validation demo
+    @app.get("/api/ml/quick-test-assessment", tags=["ml-validation"])
+    def quick_test_assessment(battery_id: Optional[str] = None):
+        """Each physical battery's counted Quick Tests against the saved-model inputs, and whether a
+        defensible short-test SoH/RUL model exists. Never returns an SoH or RUL number."""
+        _finalize()
+        with db.read() as conn:
+            if battery_id:
+                _battery(conn, battery_id)
+                ids = [battery_id]
+            else:
+                ids = [r["battery_id"] for r in conn.execute(
+                    "SELECT battery_id FROM batteries WHERE managed=1 AND source=? ORDER BY battery_id",
+                    (profile_source(s),)).fetchall()]
+            return {"batteries": short_test_ml.assess_all(conn, ids, s)}
+
     @app.get("/api/ml-validation", tags=["ml-validation"])
     def ml_validation_summary():
         """Leakage-free leave-one-cell-out evaluation of the NASA SoH/RUL models (demo only)."""

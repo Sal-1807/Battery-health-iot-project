@@ -9,6 +9,8 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  assessments = [empty("BAT-A-3000"), empty("BAT-B-3000"), empty("BAT-C-2500")];
+  physicalRows = [];
 });
 
 const m = (mae: number, rmse: number, n = 100) => ({ n, mae, rmse });
@@ -49,6 +51,33 @@ const physical = [
   { battery_id: "CELL-18650-01", archived: true, latest_valid_prediction: null, latest_prediction: null },
 ];
 
+const inputKinds: [string, "missing" | "different_quantity" | "out_of_regime", string | null][] = [
+  ["Voltage_mean", "different_quantity", "mean_voltage_v"], ["Voltage_min", "different_quantity", "final_voltage_v"],
+  ["Voltage_max", "different_quantity", "initial_voltage_v"], ["Voltage_range", "different_quantity", "voltage_drop_v"],
+  ["Current_mean", "out_of_regime", "mean_current_a"], ["Current_std", "missing", null], ["Temperature_mean", "missing", null],
+  ["Temperature_max", "different_quantity", "max_temperature_c"], ["Temperature_rise", "different_quantity", "temperature_rise_c"],
+  ["Cycle_number", "missing", null],
+];
+const qt = (n: number) => ({ number: n, test_uid: `T-20261119-BAT-A-3000-00${n}`, completed_at: "2026-11-19T10:00:00Z", duration_s: 300,
+  initial_voltage_v: 4.02 - n * 0.01, final_voltage_v: 3.93 - n * 0.01, voltage_drop_v: 0.09, mean_voltage_v: 3.96, mean_current_a: 0.372,
+  mean_power_w: 1.47, max_temperature_c: 26.4, temperature_rise_c: 0.8, delivered_mah: 31.0 + n / 10, delivered_wh: 0.123 });
+const assessA = {
+  battery_id: "BAT-A-3000",
+  quick_tests: { count: 3, target: 3, window_s: 300, measured: [qt(1), qt(2), qt(3)] },
+  saved_model: { usable: false, reason: "The saved NASA models need statistics of one complete discharge plus the true cycle count.",
+    inputs: inputKinds.map(([f, kind, key]) => ({ model_input: f, kind, quick_metric: key, quick_values: key ? [0.372, 0.371, 0.373] : [],
+      nasa_training_range: f === "Current_mean" ? { min: 1.81, max: 2.0 } : { min: 1, max: 2 }, inside_nasa_range: kind === "out_of_regime" ? false : null,
+      usable_by_saved_model: false, reason: `${f} reason` })) },
+  short_test_model: { defensible_short_test_model: false, implemented: false,
+    conclusion: "Not defensible with the available data: SoH and RUL remain unavailable for this battery.",
+    checks: [{ requirement: "Operating regime overlaps the NASA training data (load current)", met: false, detail: "0.372 A vs NASA 1.81-2.00 A." },
+             { requirement: "Ground-truth SoH for this battery to evaluate against (a measured full-capacity discharge)", met: false, detail: "0 measured." }] },
+  soh: { status: "unavailable", value: null }, rul: { status: "unavailable", value: null }, note: "Quick Test values above are genuine measurements.",
+};
+const empty = (id: string) => ({ ...assessA, battery_id: id, quick_tests: { count: 0, target: 3, window_s: 300, measured: [] } });
+let assessments: unknown[] = [empty("BAT-A-3000"), empty("BAT-B-3000"), empty("BAT-C-2500")];
+let physicalRows: unknown[] = [];
+
 function mockApi(urls: string[]) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
@@ -60,8 +89,10 @@ function mockApi(urls: string[]) {
           actual: { soh_pct: 84.6, rul_cycles: 59, reached_eol: 0 },
           saved_model: { status: "nasa_in_sample", soh_pct: 84.1, rul_cycles: 61, eol_probability: 0.05, model_version: "v", note: "Saved production models were trained on B0005, B0006 and B0018: in-sample." },
           held_out: { soh_pct: 82.0, rul_cycles: 70, trained_on: ["B0005", "B0018"], note: "" }, disclaimer: summary.disclaimer }
+      : url.includes("/api/ml/quick-test-assessment")
+      ? { batteries: assessments }
       : url.endsWith("/api/batteries")
-      ? { batteries: physical }
+      ? { batteries: physicalRows.length ? physicalRows : physical }
       : cell
       ? { cell, fold: folds[cell], disclaimer: summary.disclaimer,
           cycles: [1, 2, 3].map((c) => ({ Cycle: c, SoH: 90 - c, SoH_pred: 89, SoH_baseline: 88, RUL: 100 - c, RUL_pred: 90, RUL_reg_pred: 90, RUL_baseline: 95, Reached_EOL: 0, EOL_pred: 0, EOL_prob: 0.1 })) }
@@ -99,6 +130,43 @@ describe("Battery Health Predictions: physical batteries and model demo", () => 
     expect(screen.getByText(/trained on B0005 \+ B0018 only/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Demo cycle"), { target: { value: "120" } });
     await waitFor(() => expect(urls.some((u) => u.includes("/demo?cycle=120"))).toBe(true));
+  });
+});
+
+describe("Battery A after 3/3 Quick Tests (regression: unexplained 'unavailable')", () => {
+  it("shows the 3 measured tests, why SoH/RUL stay unavailable, and no fabricated value", async () => {
+    assessments = [assessA, empty("BAT-B-3000"), empty("BAT-C-2500")];
+    physicalRows = physical.map((p) => p.battery_id === "BAT-A-3000"
+      ? { ...p, latest_valid_prediction: null, latest_prediction: pred("unavailable", null, null, ["incomplete cycle"]) } : p);
+    mockApi([]);
+    render(<MLValidation />);
+    const row = (await screen.findByText("3 / 3")).closest("tr")!;
+    expect(row.textContent).toContain("BAT-A-3000");
+    expect(row.textContent).toMatch(/3 measured 300 s Quick Tests\. They are partial discharges/);
+    expect(row.textContent).toContain("Not available");
+    expect(row.textContent).not.toMatch(/%|cycles\b(?! the)/);
+    await screen.findByText(/Why Quick Tests give no SoH \/ RUL — BAT-A-3000/);
+    expect(screen.getByText("Test 3/3")).toBeTruthy();
+    expect(screen.getByText("31.3")).toBeTruthy();                                 // genuine mAh of test 3
+    expect(screen.getByText(/Saved NASA models: not applicable/)).toBeTruthy();
+    expect(screen.getByText(/Not defensible with the available data/)).toBeTruthy();
+    expect(screen.getByText(/Operating regime overlaps the NASA training data/)).toBeTruthy();
+    // the working saved-model predictions are shown separately, on NASA data, not as Battery A
+    expect(screen.getByText(/Saved-model predictions — NASA dataset example/)).toBeTruthy();
+    expect(screen.getByText(/not BAT-A, BAT-B or BAT-C/)).toBeTruthy();
+  });
+
+  it("lists all 10 model inputs with their incompatibility when expanded", async () => {
+    assessments = [assessA, empty("BAT-B-3000"), empty("BAT-C-2500")];
+    mockApi([]);
+    render(<MLValidation />);
+    const det = (await screen.findByText("Model inputs vs. Quick Test measurements (10 inputs)")).closest("details")!;
+    det.open = true;
+    fireEvent(det, new Event("toggle"));
+    await screen.findByText("Cycle_number");
+    expect(screen.getAllByText("not measured").length).toBe(3);
+    expect(screen.getAllByText("different quantity").length).toBe(6);
+    expect(screen.getAllByText("outside NASA regime").length).toBe(1);
   });
 });
 

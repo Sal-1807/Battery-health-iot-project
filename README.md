@@ -179,6 +179,12 @@ The model tests skip (rather than fail) if `models/*.pkl` have not been generate
 
 ## Limitations
 
+- **Quick Tests cannot feed the ML models, and no short-test model is defensible.** Battery Health Predictions shows,
+  per battery, the measured Quick Test features next to the 10 saved-model inputs and why each is incompatible
+  (`iot/backend/short_test_ml.py`). The checks that fail: the load current (~0.37 A) is far outside NASA's ~2 A
+  regime, there is no measured full-capacity discharge to evaluate an SoH prediction against, and 3 short tests show
+  no degradation trend for RUL. SoH/RUL therefore stay *Not available* after 3/3 Quick Tests; the saved models are
+  demonstrated on NASA dataset cycles instead.
 - **No validated SoH/RUL for BAT-A/B/C.** The models were trained on three NASA 2.0 Ah cells at ~2 A constant current.
   A 300 s Quick Test is not a complete discharge cycle, so it cannot be fed to the cycle-level models; in practice the
   physical batteries show **Not available** unless a complete, in-range discharge is recorded.

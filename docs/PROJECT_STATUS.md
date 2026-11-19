@@ -226,3 +226,17 @@ BAT-A/B/C.
 Datasets, models, migrations, safety logic and experiment history are unchanged.
 
 **Verification:** backend 170 tests, dashboard 44 tests, simulation 52/52 checks, TypeScript and production build pass.
+
+## 18. Quick Tests and SoH/RUL — assessment, not a prediction — 2026-11-19
+
+After Battery A completed 3/3 Quick Tests, the predictions page still showed *Not available* without explaining it.
+`iot/backend/short_test_ml.py` (API `/api/ml/quick-test-assessment`) now reads the counted tests and documents, per
+saved-model input, why a 300 s partial discharge cannot supply it: 6 are different quantities (window statistics, not
+full-cycle statistics), `Current_mean` is the same quantity but outside the NASA regime, and `Current_std`,
+`Temperature_mean` and `Cycle_number` are not measured.
+
+**Short-test model: not built.** Checked prerequisites: per-sample NASA time series (not committed; downloadable),
+regime overlap (fails: ~0.37 A vs ~1.8–2.0 A), ground-truth SoH for the cell (fails: no measured full-capacity
+discharge), observed degradation for RUL (fails). Training on 2 A NASA windows from full charge and applying the
+model to a 0.37 A window from an unknown state of charge would be an unevaluated extrapolation, so physical SoH/RUL
+remain unavailable. The Quick Tests themselves are unchanged and still counted.
