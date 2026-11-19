@@ -194,6 +194,10 @@ class TestCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     battery_id: str = Field(pattern=ID_PATTERN)
     notes: Optional[str] = Field(default=None, max_length=500)
+    kind: Literal["quick", "supervised"] = Field(
+        default="quick", description="quick = 300 s Quick Test Cycle (default); supervised = open-ended test")
+    duration_s: Optional[int] = Field(default=None, ge=60, le=3600,
+                                      description="software recording window for quick tests (default 300 s)")
 
 
 class TestChecklist(BaseModel):

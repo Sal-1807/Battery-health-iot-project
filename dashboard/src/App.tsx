@@ -1,15 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Bell, BatteryCharging, ClipboardList, FlaskConical, Gauge, History, Layers, Server, TrendingDown, Zap } from "lucide-react";
+import { BrainCircuit, ClipboardList, Gauge, Layers, LineChart as LineChartIcon, Zap } from "lucide-react";
 import { api, type BatterySummary } from "./lib/api";
 import { useLocalStorage, usePoll } from "./lib/hooks";
-import { SOURCE_LABEL } from "./lib/format";
 import { Pill } from "./components/ui";
 import Overview from "./pages/Overview";
-import Live from "./pages/Live";
-import Health from "./pages/Health";
-import HistoryPage from "./pages/History";
-import Alerts from "./pages/Alerts";
-import SystemPage from "./pages/System";
 import Batteries from "./pages/Batteries";
 import MLValidation from "./pages/MLValidation";
 import Aging from "./pages/Aging";
@@ -18,21 +12,21 @@ import TestManager from "./pages/TestManager";
 const PAGES = [
   { id: "overview", label: "Overview", icon: Gauge },
   { id: "batteries", label: "Batteries", icon: Layers },
-  { id: "aging", label: "Aging analytics", icon: TrendingDown },
-  { id: "tests", label: "Test Manager", icon: ClipboardList },
-  { id: "live", label: "Live", icon: Activity },
-  { id: "health", label: "Battery health", icon: BatteryCharging },
-  { id: "history", label: "History", icon: History },
-  { id: "alerts", label: "Alerts", icon: Bell },
-  { id: "ml", label: "ML validation", icon: FlaskConical },
-  { id: "system", label: "System", icon: Server },
+  { id: "tests", label: "Quick Tests", icon: ClipboardList },
+  { id: "analysis", label: "Battery Analysis", icon: LineChartIcon },
+  { id: "ml", label: "Battery Health Predictions", icon: BrainCircuit },
 ] as const;
 type PageId = (typeof PAGES)[number]["id"];
 
-function usePage(): [PageId, (p: PageId) => void] {
+// Sections merged in the final layout keep working as links.
+const ALIASES: Record<string, PageId> = {
+  live: "overview", alerts: "overview", system: "batteries", history: "analysis", aging: "analysis", health: "ml",
+};
+
+function usePage(): [PageId, (p: string) => void] {
   const read = () => {
     const h = window.location.hash.replace("#/", "").replace("#", "");
-    return (PAGES.some((p) => p.id === h) ? h : "overview") as PageId;
+    return (PAGES.some((p) => p.id === h) ? h : ALIASES[h] ?? "overview") as PageId;
   };
   const [page, setPage] = useState<PageId>(read);
   useEffect(() => {
@@ -40,13 +34,14 @@ function usePage(): [PageId, (p: PageId) => void] {
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
   }, []);
-  return [page, (p) => (window.location.hash = `#/${p}`)];
+  return [page, (p) => (window.location.hash = `#/${ALIASES[p] ?? p}`)];
 }
 
 export interface PageProps {
   battery: BatterySummary | undefined;
   batteries: BatterySummary[];
   batteriesLoading: boolean;
+  selectBattery?: (id: string, page?: string) => void;
 }
 
 export default function App() {
@@ -55,12 +50,21 @@ export default function App() {
   const health = usePoll(() => api.health(), 10000, []);
   const [selected, setSelected] = useLocalStorage("bhm.battery", "");
 
-  const list = batteries.data?.batteries ?? [];
-  const battery = useMemo(() => list.find((b) => b.battery_id === selected) ?? list[0], [list, selected]);
-  const alertTotal = list.reduce((n, b) => n + (b.active_alerts.critical ?? 0) + (b.active_alerts.warning ?? 0), 0);
+  const all = batteries.data?.batteries ?? [];
+  const active = all.filter((b) => !b.archived);
+  const archived = all.filter((b) => b.archived);
+  const battery = useMemo(
+    () => all.find((b) => b.battery_id === selected) ?? active[0] ?? all[0],
+    [all, active, selected],
+  );
+  const alertTotal = active.reduce((n, b) => n + (b.active_alerts.critical ?? 0) + (b.active_alerts.warning ?? 0), 0);
 
   const apiUp = !health.error && health.data;
-  const props: PageProps = { battery, batteries: list, batteriesLoading: batteries.loading };
+  const selectBattery = (id: string, p?: string) => {
+    setSelected(id);
+    if (p) go(p);
+  };
+  const props: PageProps = { battery, batteries: active, batteriesLoading: batteries.loading, selectBattery };
 
   return (
     <div className="min-h-screen">
@@ -77,21 +81,30 @@ export default function App() {
           </div>
 
           <div className="ml-auto flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-xs text-ink-3" title="Which battery's data to view. To change the physically connected battery, use the Batteries page.">
+            <label className="flex items-center gap-2 text-xs text-ink-3" title="Which battery's data to view. The physically connected battery is set on the Batteries page.">
               Viewing
               <select
                 aria-label="Select battery"
                 value={battery?.battery_id ?? ""}
                 onChange={(e) => setSelected(e.target.value)}
-                disabled={!list.length}
+                disabled={!all.length}
                 className="max-w-[16rem] rounded-lg border border-line bg-panel-2 px-2.5 py-1.5 text-sm text-ink focus-visible:outline-2 focus-visible:outline-accent"
               >
-                {!list.length && <option value="">{batteries.loading ? "Loading…" : "No batteries yet"}</option>}
-                {list.map((b) => (
+                {!all.length && <option value="">{batteries.loading ? "Loading…" : "No batteries yet"}</option>}
+                {active.map((b) => (
                   <option key={b.battery_id} value={b.battery_id}>
-                    {b.label || b.battery_id} — {SOURCE_LABEL[b.source]}
+                    {b.battery_id}
                   </option>
                 ))}
+                {archived.length > 0 && (
+                  <optgroup label="Archive (read-only)">
+                    {archived.map((b) => (
+                      <option key={b.battery_id} value={b.battery_id}>
+                        {b.battery_id} (archived)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </label>
             <Pill tone={apiUp ? (health.data?.status === "ok" ? "good" : "warning") : "critical"}>
@@ -112,7 +125,7 @@ export default function App() {
             >
               <Icon size={15} />
               {label}
-              {id === "alerts" && alertTotal > 0 && (
+              {id === "overview" && alertTotal > 0 && (
                 <span className="tabular rounded-full bg-critical/20 px-1.5 text-[11px] font-semibold text-critical">{alertTotal}</span>
               )}
             </button>
@@ -128,12 +141,11 @@ export default function App() {
           </p>
         </div>
       )}
-      {battery && battery.source !== "hardware" && health.data?.mode !== "simulation" && page !== "ml" && page !== "aging" && page !== "tests" && (
+      {battery?.archived && (
         <div className="border-b border-warning/30 bg-warning/10">
           <p className="mx-auto max-w-7xl px-4 py-2 text-xs text-warning sm:px-6">
-            {battery.source === "simulation"
-              ? "DEMO MODE — this battery receives synthetic simulator data, not hardware measurements."
-              : "NASA REPLAY — real NASA PCoE cycle features replayed through the model (no live device). Model output on this data is in-sample."}
+            ARCHIVED RECORD (read-only) — {battery.battery_id} is not part of the current three-battery protocol. Its history is
+            kept as recorded and is never merged into BAT-A, BAT-B or BAT-C.
           </p>
         </div>
       )}
@@ -147,27 +159,16 @@ export default function App() {
           </div>
         )}
         {page === "overview" && <Overview {...props} />}
-        {page === "live" && <Live {...props} />}
-        {page === "health" && <Health {...props} />}
-        {page === "history" && <HistoryPage {...props} />}
-        {page === "alerts" && <Alerts {...props} />}
-        {page === "system" && <SystemPage />}
-        {page === "ml" && <MLValidation />}
-        {page === "aging" && <Aging />}
+        {page === "batteries" && <Batteries {...props} />}
         {page === "tests" && <TestManager />}
-        {page === "batteries" && (
-          <Batteries
-            selectBattery={(id, p) => {
-              setSelected(id);
-              go((p ?? "overview") as PageId);
-            }}
-          />
-        )}
+        {page === "analysis" && <Aging {...props} />}
+        {page === "ml" && <MLValidation />}
       </main>
 
       <footer className="mx-auto max-w-7xl px-4 pb-8 pt-2 text-[11px] text-ink-3 sm:px-6">
-        SoH/RUL models were trained on three NASA 2.0 Ah cells. Live estimates are experimental and are withheld when the
-        input is outside the training range. Alerts are monitoring signals only — protection must be implemented in hardware.
+        Software monitoring only: alerts, buttons and the Quick Test timer cannot disconnect the battery or the load. SoH and
+        RUL are not produced for the physical batteries because no validated model exists for them; the NASA model is shown
+        as a separate demonstration.
       </footer>
     </div>
   );

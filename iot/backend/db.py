@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS batteries (
@@ -263,8 +263,15 @@ CREATE TABLE IF NOT EXISTS battery_tests (
 CREATE INDEX IF NOT EXISTS ix_tests_battery ON battery_tests(battery_id, id);
 """
 
+# v8: Quick Test protocol. Existing tests keep kind NULL (= legacy supervised test).
+_SCHEMA_V8 = """
+ALTER TABLE battery_tests ADD COLUMN kind TEXT;                     -- quick | supervised
+ALTER TABLE battery_tests ADD COLUMN duration_s INTEGER;            -- software recording window
+ALTER TABLE battery_tests ADD COLUMN disconnect_confirmed_at TEXT;  -- operator confirmed the load was removed
+"""
+
 _MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4, 5: _SCHEMA_V5,
-                               6: _SCHEMA_V6, 7: _SCHEMA_V7}
+                               6: _SCHEMA_V6, 7: _SCHEMA_V7, 8: _SCHEMA_V8}
 
 
 class Database:

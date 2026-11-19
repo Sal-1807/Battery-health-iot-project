@@ -5,7 +5,6 @@ import { api } from "../lib/api";
 import { usePoll } from "../lib/hooks";
 import { fmtAge, fmtTime } from "../lib/format";
 import { TimeChart } from "../components/charts";
-import { SessionPanel } from "../components/session";
 import { Card, ConnectionPill, EmptyState, ErrorBox, Loading, Provenance, Segmented } from "../components/ui";
 
 const WINDOWS = [
@@ -84,7 +83,6 @@ export default function Live({ battery }: PageProps) {
         </span>
       </div>
 
-      <SessionPanel b={battery} />
       {hist.error && <ErrorBox message={`Could not load telemetry: ${hist.error.message}`} />}
       {offline && (
         <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">

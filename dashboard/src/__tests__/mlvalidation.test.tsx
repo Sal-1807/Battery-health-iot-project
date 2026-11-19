@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import MLValidation from "../pages/MLValidation";
 import type { MlFold } from "../lib/api";
 
@@ -38,18 +38,69 @@ const summary = {
   reproduction: { checked: true, matches_committed_lobo_predictions: true, file: "results/lobo_predictions.csv" },
 };
 
+const pred = (status: "experimental" | "unavailable", soh: number | null, rul: number | null, reasons: string[] = []) => ({
+  id: 1, battery_id: "x", cycle_id: 1, cycle_number: 1, created_at: "", status, model_version: "v", data_source: "hardware",
+  soh_pct: soh, eol_probability: null, eol_predicted: null, rul_cycles: rul, reasons, warnings: [], out_of_range: [], input_features: null,
+});
+const physical = [
+  { battery_id: "BAT-A-3000", archived: false, latest_valid_prediction: pred("experimental", 91.24, 87.6), latest_prediction: pred("experimental", 91.24, 87.6) },
+  { battery_id: "BAT-B-3000", archived: false, latest_valid_prediction: null, latest_prediction: pred("unavailable", null, null, ["features outside NASA training range: Current_mean"]) },
+  { battery_id: "BAT-C-2500", archived: false, latest_valid_prediction: null, latest_prediction: null },
+  { battery_id: "CELL-18650-01", archived: true, latest_valid_prediction: null, latest_prediction: null },
+];
+
 function mockApi(urls: string[]) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     urls.push(url);
     const cell = url.match(/ml-validation\/(B\d+)/)?.[1];
-    const body = cell
+    const demo = url.match(/ml-validation\/(B\d+)\/demo\?cycle=(\d+)/);
+    const body = demo
+      ? { cell: demo[1], cycle: Number(demo[2]), source: "NASA PCoE battery aging dataset (processed features)", features: {},
+          actual: { soh_pct: 84.6, rul_cycles: 59, reached_eol: 0 },
+          saved_model: { status: "nasa_in_sample", soh_pct: 84.1, rul_cycles: 61, eol_probability: 0.05, model_version: "v", note: "Saved production models were trained on B0005, B0006 and B0018: in-sample." },
+          held_out: { soh_pct: 82.0, rul_cycles: 70, trained_on: ["B0005", "B0018"], note: "" }, disclaimer: summary.disclaimer }
+      : url.endsWith("/api/batteries")
+      ? { batteries: physical }
+      : cell
       ? { cell, fold: folds[cell], disclaimer: summary.disclaimer,
           cycles: [1, 2, 3].map((c) => ({ Cycle: c, SoH: 90 - c, SoH_pred: 89, SoH_baseline: 88, RUL: 100 - c, RUL_pred: 90, RUL_reg_pred: 90, RUL_baseline: 95, Reached_EOL: 0, EOL_pred: 0, EOL_prob: 0.1 })) }
       : summary;
     return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
   });
 }
+
+describe("Battery Health Predictions: physical batteries and model demo", () => {
+  it("labels a gate-passing estimate as Experimental ML Estimate and never invents one otherwise", async () => {
+    mockApi([]);
+    render(<MLValidation />);
+    expect(screen.getByRole("heading", { name: "Battery Health Predictions" })).toBeTruthy();
+    await screen.findByText("BAT-A-3000");
+    const a = screen.getByText("BAT-A-3000").closest("tr")!;
+    expect(a.textContent).toContain("91.2 %");
+    expect(a.textContent).toContain("88 cycles");
+    expect(a.textContent).toContain("Experimental ML Estimate");
+    const b = screen.getByText("BAT-B-3000").closest("tr")!;
+    expect(b.textContent).toContain("Not available");
+    expect(b.textContent).toContain("outside NASA training range");
+    expect(b.textContent).not.toMatch(/%/);
+    expect(screen.getByText("BAT-C-2500").closest("tr")!.textContent).toMatch(/Quick Tests are not complete discharge records/);
+    expect(screen.queryByText("CELL-18650-01")).toBeNull();          // archived records are not predicted
+  });
+
+  it("runs the saved model on a chosen NASA dataset cycle, beside the held-out model", async () => {
+    const urls: string[] = [];
+    mockApi(urls);
+    render(<MLValidation />);
+    await screen.findByText("Measured (dataset)");
+    expect(urls.some((u) => u.includes("/api/ml-validation/B0006/demo?cycle=50"))).toBe(true);
+    expect(screen.getByText("84.1")).toBeTruthy();
+    expect(screen.getByText(/in-sample/)).toBeTruthy();
+    expect(screen.getByText(/trained on B0005 \+ B0018 only/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Demo cycle"), { target: { value: "120" } });
+    await waitFor(() => expect(urls.some((u) => u.includes("/demo?cycle=120"))).toBe(true));
+  });
+});
 
 describe("ML validation page", () => {
   it("shows the disclaimer, protocol and observed EOL for the held-out cell", async () => {
@@ -68,7 +119,7 @@ describe("ML validation page", () => {
     mockApi(urls);
     render(<MLValidation />);
     await screen.findByText("Cycle 125");
-    fireEvent.click(screen.getByRole("radio", { name: "B0006" }));
+    fireEvent.click(within(screen.getByRole("radiogroup", { name: "NASA cell" })).getByRole("radio", { name: "B0006" }));
     await waitFor(() => expect(urls.some((u) => u.endsWith("/api/ml-validation/B0006"))).toBe(true));
     await screen.findByText("Cycle 109");
     expect(screen.getByText(/RUL stage 1 — EOL classifier/)).toBeTruthy();
@@ -80,7 +131,7 @@ describe("ML validation page", () => {
     mockApi([]);
     render(<MLValidation />);
     await screen.findByText("Cycle 125");
-    fireEvent.click(screen.getByRole("radio", { name: "B0018" }));
+    fireEvent.click(within(screen.getByRole("radiogroup", { name: "NASA cell" })).getByRole("radio", { name: "B0018" }));
     await screen.findByText("censored", { selector: "span" });
     expect(screen.getByText("never")).toBeTruthy();
   });

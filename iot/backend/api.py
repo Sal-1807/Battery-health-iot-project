@@ -38,6 +38,11 @@ log = logging.getLogger("bhm")
 PRED_JSON = ("reasons", "warnings", "out_of_range", "input_features")
 
 
+DB_FEATURE_COLS = (("voltage_mean", "Voltage_mean"), ("voltage_min", "Voltage_min"), ("voltage_max", "Voltage_max"),
+                   ("voltage_range", "Voltage_range"), ("current_mean", "Current_mean"), ("current_std", "Current_std"),
+                   ("temperature_mean", "Temperature_mean"), ("temperature_max", "Temperature_max"),
+                   ("temperature_rise", "Temperature_rise"), ("cycle_number", "Cycle_number"))
+
 SIM_PROFILES = (("SIM-BAT-A-3000", "SIMULATED Battery A - 3000 mAh", 3.0),
                 ("SIM-BAT-B-3000", "SIMULATED Battery B - 3000 mAh", 3.0),
                 ("SIM-BAT-C-2500", "SIMULATED Battery C - 2500 mAh", 2.5))
@@ -107,6 +112,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def _db_error(_: Request, exc: sqlite3.Error):
         log.exception("database error")
         return JSONResponse(status_code=503, content={"detail": f"database error: {type(exc).__name__}"})
+
+    def _finalize() -> None:
+        """End quick tests whose 300 s software window has passed (software recording only)."""
+        with db.write() as conn:
+            battery_tests.finalize_due(conn, s)
 
     def _battery(conn, battery_id: str) -> dict:
         row = conn.execute("SELECT * FROM batteries WHERE battery_id=?", (battery_id,)).fetchone()
@@ -180,11 +190,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # ------------------------------------------------------------ batteries
     @app.get("/api/batteries", tags=["batteries"])
     def list_batteries():
+        _finalize()
         refresh_offline(db, s)
         now = datetime.now(timezone.utc)
         with db.read() as conn:
             rows = conn.execute("SELECT * FROM batteries ORDER BY battery_id").fetchall()
-            return {"batteries": [battery_summary(conn, dict(r), now, s) for r in rows]}
+            out = []
+            for r in rows:
+                b = battery_summary(conn, dict(r), now, s)
+                # active = a physical profile of the current mode; everything else (retired IDs such as
+                # CELL-18650-01, UNASSIGNED buckets, old simulator/replay data) is archived: kept, read-only
+                b["archived"] = not (r["managed"] and r["source"] == profile_source(s))
+                out.append(b)
+            return {"batteries": out}
 
     @app.get("/api/battery/{battery_id}", tags=["batteries"])
     def get_battery(battery_id: str):
@@ -298,7 +316,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                             "last_reading_ts": last["ts"] if last else None,
                             "last_cell_state": last["cell_state"] if last else None,
                             "n_readings": n, "stats": battery_stats(conn, b, s),
-                            "soh": "unavailable" if b["managed"] else None})
+                            "quick_test_cycles": battery_tests.quick_tests(conn, b["battery_id"])["count"],
+                            "soh": "experimental" if conn.execute(
+                                "SELECT 1 FROM predictions WHERE battery_id=? AND status='experimental' LIMIT 1",
+                                (b["battery_id"],)).fetchone() else "unavailable"})
         return {"batteries": out,
                 "note": "Measured values per battery. SoH/RUL are not produced for physical profiles."}
 
@@ -440,10 +461,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.post("/api/tests", tags=["tests"])
     def create_test(body: TestCreate):
         with db.write() as conn:
-            return battery_tests.create_test(conn, body.battery_id, body.notes)
+            return battery_tests.create_test(conn, body.battery_id, body.notes, body.kind, body.duration_s)
 
     @app.get("/api/tests", tags=["tests"])
     def list_tests(battery_id: Optional[str] = None, state: Optional[str] = None):
+        _finalize()
         where, args = [], []
         if battery_id:
             where.append("battery_id=?"); args.append(battery_id)
@@ -462,8 +484,43 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return StreamingResponse(iter([battery_tests.tests_csv(data)]), media_type="text/csv",
                                  headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
+    @app.get("/api/quick-tests", tags=["tests"])
+    def quick_test_overview(battery_id: Optional[str] = None):
+        """Quick Test Cycles per physical profile (or one battery), with trends and model status."""
+        _finalize()
+        with db.read() as conn:
+            if battery_id:
+                _battery(conn, battery_id)
+                ids = [battery_id]
+            else:
+                ids = [r["battery_id"] for r in conn.execute(
+                    "SELECT battery_id FROM batteries WHERE managed=1 AND source=? ORDER BY battery_id",
+                    (profile_source(s),)).fetchall()]
+            per = [battery_tests.quick_tests(conn, b) for b in ids]
+            return {"batteries": per, "comparison": battery_tests.compare_quick(per),
+                    "model_status": battery_tests.QUICK_MODEL_STATUS,
+                    "protocol": {"duration_s": battery_tests.QUICK_DURATION_S, "target_per_battery": battery_tests.QUICK_TARGET}}
+
+    @app.get("/api/quick-tests/features.csv", tags=["tests"])
+    def quick_test_features(battery_id: Optional[str] = None):
+        """Per-Quick-Test-Cycle features for experimental ML analysis (no validated model exists)."""
+        data = quick_test_overview(battery_id)["batteries"]
+        buf = io.StringIO()
+        buf.write("# " + battery_tests.QUICK_MODEL_STATUS["message"] + "\n")
+        w = csv.DictWriter(buf, fieldnames=battery_tests.QT_FEATURES, extrasaction="ignore")
+        w.writeheader()
+        with db.read() as conn:
+            for q in data:
+                rated = conn.execute("SELECT rated_capacity_ah FROM batteries WHERE battery_id=?",
+                                     (q["battery_id"],)).fetchone()["rated_capacity_ah"]
+                for c in q["cycles"]:
+                    w.writerow({**c, "battery_id": q["battery_id"], "rated_capacity_mah": rated * 1000 if rated else None})
+        return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv", headers={
+            "Content-Disposition": f'attachment; filename="quick_test_features_{battery_id or "all"}.csv"'})
+
     @app.get("/api/tests/{uid}", tags=["tests"])
     def get_test(uid: str):
+        _finalize()
         with db.read() as conn:
             return battery_tests.test_view(conn, battery_tests._load(conn, uid), s)
 
@@ -494,6 +551,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         with db.write() as conn:
             out = battery_tests.update_checklist(conn, uid, body.model_dump())
         return {**out, "hardware_notice": battery_tests.HARDWARE_NOTICE}
+
+    @app.post("/api/tests/{uid}/confirm-disconnect", tags=["tests"])
+    def confirm_disconnect(uid: str):
+        """Record that the operator physically disconnected the load (required before the next test).
+        Refused while load current is still measured. The software cannot disconnect anything itself."""
+        with db.write() as conn:
+            return battery_tests.confirm_disconnect(conn, uid, s)
 
     @app.post("/api/tests/{uid}/{action}", tags=["tests"])
     def test_action(uid: str, action: Literal["start", "pause", "resume", "complete", "abort"],
@@ -529,6 +593,36 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     def ml_validation_summary():
         """Leakage-free leave-one-cell-out evaluation of the NASA SoH/RUL models (demo only)."""
         return ml_validation.summary(s)
+
+    @app.get("/api/ml-validation/{cell}/demo", tags=["ml-validation"])
+    def ml_demo(cell: str, cycle: int = Query(..., ge=1)):
+        """Model demonstration on a REAL NASA dataset cycle: the saved production models (in-sample for these
+        cells) and the held-out leave-one-cell-out prediction for the same cycle. Never applied to BAT-A/B/C."""
+        d = ml_validation.cell_detail(s, cell)
+        if d is None:
+            raise HTTPException(404, f"'{cell}' is not one of {', '.join(ml_validation.CELLS)}")
+        import pandas as pd
+        df = pd.read_csv(s.features_csv)
+        row = df[(df["Battery_ID"] == cell) & (df["Cycle"] == cycle)]
+        if row.empty:
+            raise HTTPException(404, f"{cell} has no cycle {cycle}")
+        r = row.iloc[0]
+        feats = {c: float(r[f]) for c, f in DB_FEATURE_COLS}
+        res = models.predict_cycle({**feats, "complete": 1}, data_source="nasa_replay", rated_capacity_ah=2.0)
+        held = next(x for x in d["cycles"] if x["Cycle"] == cycle)
+        return {
+            "cell": cell, "cycle": cycle, "source": "NASA PCoE battery aging dataset (processed features)",
+            "features": {f: float(r[f]) for _, f in DB_FEATURE_COLS},
+            "actual": {"soh_pct": float(r["SoH"]), "rul_cycles": None if pd.isna(r["RUL"]) else float(r["RUL"]),
+                       "reached_eol": int(r["Reached_EOL"])},
+            "saved_model": {"status": res.status, "soh_pct": res.soh_pct, "rul_cycles": res.rul_cycles,
+                            "eol_probability": res.eol_probability, "model_version": res.model_version,
+                            "note": "Saved production models were trained on B0005, B0006 and B0018: in-sample."},
+            "held_out": {"soh_pct": held["SoH_pred"], "rul_cycles": held["RUL_pred"],
+                         "trained_on": d["fold"]["train_cells"],
+                         "note": "Leave-one-cell-out model that never saw this cell: the honest accuracy reference."},
+            "disclaimer": ml_validation.DISCLAIMER,
+        }
 
     @app.get("/api/ml-validation/{cell}", tags=["ml-validation"])
     def ml_validation_cell(cell: str):

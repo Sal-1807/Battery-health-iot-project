@@ -251,8 +251,8 @@ def _discharge(client, battery, start, n, i_a, v0, v1, t0, t1, seq0=0, step_s=10
 
 
 @needs_models
-def test_hardware_battery_never_gets_soh_rul(client):
-    """Real hardware cells (including legacy IDs such as CELL-18650-01) get no NASA SoH/RUL."""
+def test_hardware_battery_estimate_is_only_ever_experimental(client):
+    """A real cell gets a model output only through the gate, and then only as an Experimental ML Estimate."""
     client.post("/api/battery/reading", json=reading(battery="CELL-18650-01", ts=past(7200), v=4.19, i=0.0, t=24.0,
                                                      seq=0, boot_id="hw"))
     client.put("/api/battery/CELL-18650-01", json={"cycle_count_offset": 20, "rated_capacity_ah": 2.0,
@@ -260,10 +260,10 @@ def test_hardware_battery_never_gets_soh_rul(client):
     start = datetime.now(timezone.utc) - timedelta(minutes=90)
     out = _discharge(client, "CELL-18650-01", start, 120, 1.9, 4.19, 2.7, 24.5, 39.0, seq0=1, step_s=20)
     closed = [c for r in out["results"] for c in r["cycles_closed"]]
-    assert closed and closed[0]["complete"]                       # same NASA-like cycle that passes the model gate
-    assert closed[0]["prediction"]["status"] == "unavailable"
-    assert "not been validated on these cells" in closed[0]["prediction"]["reasons"][0]
-    assert client.get("/api/battery/CELL-18650-01").json()["latest_valid_prediction"] is None
+    assert closed and closed[0]["complete"]
+    p = client.get("/api/battery/CELL-18650-01/predictions").json()["predictions"][-1]
+    assert p["status"] == "experimental"                              # never "validated"
+    assert any("validated only on NASA cells" in w for w in p["warnings"])
 
 
 def test_resistor_discharge_aggregates_but_prediction_unavailable(client):

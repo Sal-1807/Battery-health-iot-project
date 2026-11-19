@@ -127,3 +127,16 @@ def test_demo_does_not_touch_live_hardware_data(client):
     assert before == after
     cmp = client.get("/api/batteries/compare").json()["batteries"]
     assert all(b["soh"] == "unavailable" for b in cmp)
+
+
+def test_model_demo_on_dataset_example(client):
+    d = client.get("/api/ml-validation/B0006/demo", params={"cycle": 50}).json()
+    assert d["source"].startswith("NASA PCoE") and d["cycle"] == 50
+    assert d["saved_model"]["status"] == "nasa_in_sample" and 0 < d["saved_model"]["soh_pct"] < 120
+    assert "in-sample" in d["saved_model"]["note"]
+    assert d["held_out"]["trained_on"] == ["B0005", "B0018"]
+    rows = client.get("/api/ml-validation/B0006").json()["cycles"]
+    assert d["held_out"]["soh_pct"] == pytest.approx(next(r["SoH_pred"] for r in rows if r["Cycle"] == 50))
+    assert client.get("/api/ml-validation/B0006/demo", params={"cycle": 999}).status_code == 404
+    # the demonstration never creates or touches a physical-battery record
+    assert all(b["latest_valid_prediction"] is None for b in client.get("/api/batteries").json()["batteries"])

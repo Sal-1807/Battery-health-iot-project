@@ -229,9 +229,8 @@ def test_efc_uses_each_batterys_own_rating_and_short_sessions_are_not_cycles(cli
     assert client.get("/api/battery/BAT-C-2500/stats").json()["stats"]["completed_cycles"] == 1
 
 
-def test_soh_rul_unavailable_for_physical_profiles(client):
+def test_physical_profiles_get_only_gated_experimental_estimates(client):
     client.put("/api/battery/BAT-A-3000", json={"cycle_count_offset": 20, "cutoff_voltage_v": 2.7})
-    # NASA-like complete discharge that would pass the model gate on an unmanaged battery
     t0 = datetime.now(timezone.utc) - timedelta(minutes=90)
     assign(client, "BAT-A-3000", at=t0 - timedelta(seconds=5))
     rows = []
@@ -243,9 +242,11 @@ def test_soh_rul_unavailable_for_physical_profiles(client):
     client.post("/api/battery/readings", json={"readings": rows})
     client.post("/api/battery/BAT-A-3000/cycles/aggregate")
     preds = client.get("/api/battery/BAT-A-3000/predictions").json()["predictions"]
-    assert preds and all(p["status"] == "unavailable" and p["soh_pct"] is None for p in preds)
-    assert "not been validated on these cells" in preds[-1]["reasons"][0]
-    assert client.get("/api/battery/BAT-A-3000").json()["latest_valid_prediction"] is None
+    assert preds and {p["status"] for p in preds} <= {"experimental", "unavailable"}
+    exp = [p for p in preds if p["status"] == "experimental"]
+    assert exp and any("3 Ah" in w for w in exp[-1]["warnings"])      # rated 3.0 Ah != NASA 2.0 Ah
+    cmp = {b["battery_id"]: b for b in client.get("/api/batteries/compare").json()["batteries"]}
+    assert cmp["BAT-A-3000"]["soh"] == "experimental" and cmp["BAT-B-3000"]["soh"] == "unavailable"
 
 
 # ---------------------------------------------------------------- migration

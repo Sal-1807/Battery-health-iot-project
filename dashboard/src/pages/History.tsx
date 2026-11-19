@@ -3,11 +3,10 @@ import { Download } from "lucide-react";
 import type { PageProps } from "../App";
 import { api } from "../lib/api";
 import { usePoll } from "../lib/hooks";
-import { CELL_STATE_LABEL, fmt, fmtDuration, fmtTime, FLAG_LABEL } from "../lib/format";
+import { CELL_STATE_LABEL, fmt, fmtTime, FLAG_LABEL } from "../lib/format";
 import { TimeChart } from "../components/charts";
 import { minSpanDomain } from "./Live";
-import { END_REASON } from "../components/session";
-import { Card, EmptyState, ErrorBox, Loading, Pill, Segmented, Table } from "../components/ui";
+import { Card, EmptyState, ErrorBox, Loading, Segmented, Table } from "../components/ui";
 
 type Preset = "1h" | "24h" | "7d" | "custom";
 const PRESET_S: Record<Exclude<Preset, "custom">, number> = { "1h": 3600, "24h": 86400, "7d": 7 * 86400 };
@@ -34,8 +33,6 @@ export default function HistoryPage({ battery }: PageProps) {
 
   const chart = usePoll(id && !isReplay ? () => api.history(id, { ...range, max_points: 800 }) : null, 0, [id, range.start, range.end]);
   const table = usePoll(id && !isReplay ? () => api.history(id, { ...range, limit: 2000 }) : null, 0, [id, range.start, range.end]);
-  const cycles = usePoll(id ? () => api.cycles(id) : null, 0, [id]);
-  const sessions = usePoll(id && !isReplay ? () => api.sessions(id) : null, 10000, [id]);
 
   const chartData = useMemo(() => (chart.data?.points ?? []).map((p) => ({ ...p, ts_ms: p.ts_ms ?? Date.parse(p.ts) })), [chart.data]);
   const rows = useMemo(() => [...(table.data?.points ?? [])].reverse(), [table.data]);
@@ -46,12 +43,6 @@ export default function HistoryPage({ battery }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold">
-        History — {battery.label || battery.battery_id}
-        {battery.rated_capacity_ah != null && (
-          <span className="ml-2 text-sm font-normal text-ink-3">rated {fmt(battery.rated_capacity_ah * 1000, 0)} mAh</span>
-        )}
-      </h1>
       {!isReplay && (
         <div className="flex flex-wrap items-end gap-3">
           <Segmented
@@ -124,84 +115,6 @@ export default function HistoryPage({ battery }: PageProps) {
           )}
         </div>
       )}
-
-      {!isReplay && (
-        <Card
-          title="Discharge sessions"
-          subtitle="Measured charge and energy per session (newest first). Each figure covers that session only, not the battery's capacity."
-        >
-          {sessions.error && <ErrorBox message={sessions.error.message} />}
-          {sessions.loading ? (
-            <Loading />
-          ) : (
-            <Table
-              empty={!sessions.data?.sessions.length}
-              head={["#", "Start", "Duration", "Discharged (mAh)", "Energy (Wh)", "Avg I (A)", "V start → min", "Gaps", "End", "Type"]}
-            >
-              {(sessions.data?.sessions ?? []).map((x) => (
-                <tr key={x.id}>
-                  <td className="px-3 py-1.5">{x.id}</td>
-                  <td className="px-3 py-1.5">{fmtTime(x.start_ts, true)}</td>
-                  <td className="px-3 py-1.5">{fmtDuration(x.duration_s)}</td>
-                  <td className="px-3 py-1.5 text-ink">
-                    {fmt(x.charge_mah, 1)}
-                    {x.uncertainty_mah > 0.05 && <span className="text-ink-3"> (+≤{fmt(x.uncertainty_mah, 1)})</span>}
-                  </td>
-                  <td className="px-3 py-1.5">{fmt(x.energy_wh, 3)}</td>
-                  <td className="px-3 py-1.5">{fmt(x.mean_current_a, 3)}</td>
-                  <td className="px-3 py-1.5">
-                    {fmt(x.start_voltage_v, 3)} → {fmt(x.min_voltage_v, 3)}
-                  </td>
-                  <td className="px-3 py-1.5">{x.n_gaps ? `${x.n_gaps} (${fmtDuration(x.gap_s)})` : "none"}</td>
-                  <td className="px-3 py-1.5">{x.status === "active" ? <Pill tone="accent">In progress</Pill> : END_REASON[x.end_reason ?? ""]}</td>
-                  <td className="px-3 py-1.5" title={x.interpretation}>
-                    {x.kind === "partial" ? "Partial" : "Full range (unvalidated)"}
-                  </td>
-                </tr>
-              ))}
-            </Table>
-          )}
-        </Card>
-      )}
-
-      <Card title="Discharge cycles" subtitle="Segments detected from telemetry (or replayed NASA cycles). Only complete cycles are used by the model.">
-        {cycles.error && <ErrorBox message={cycles.error.message} />}
-        {cycles.loading ? (
-          <Loading />
-        ) : (
-          <Table
-            empty={!cycles.data?.cycles.length}
-            head={["#", "Cycle no.", "Start", "Duration", "Readings", "V mean", "V min", "I mean (A, NASA sign)", "T rise (°C)", "Status"]}
-          >
-            {(cycles.data?.cycles ?? [])
-              .slice(-200)
-              .reverse()
-              .map((c) => (
-                <tr key={c.id}>
-                  <td className="px-3 py-1.5">{c.segment_index}</td>
-                  <td className="px-3 py-1.5">{c.cycle_number ?? "unknown"}</td>
-                  <td className="px-3 py-1.5">{c.start_ts ? fmtTime(c.start_ts, true) : "—"}</td>
-                  <td className="px-3 py-1.5">{fmtDuration(c.duration_s)}</td>
-                  <td className="px-3 py-1.5">{c.n_readings ?? "—"}</td>
-                  <td className="px-3 py-1.5">{fmt(c.voltage_mean, 3)}</td>
-                  <td className="px-3 py-1.5">{fmt(c.voltage_min, 3)}</td>
-                  <td className="px-3 py-1.5">{fmt(c.current_mean, 3)}</td>
-                  <td className="px-3 py-1.5">{fmt(c.temperature_rise, 2)}</td>
-                  <td className="px-3 py-1.5">
-                    {c.complete ? (
-                      <Pill tone="good">Complete</Pill>
-                    ) : (
-                      <span title={c.completeness_notes.join("; ")}>
-                        <Pill tone="neutral">Incomplete</Pill>
-                        <span className="ml-2 text-ink-3">{c.completeness_notes[0]}</span>
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-          </Table>
-        )}
-      </Card>
 
       {!isReplay && (
         <Card

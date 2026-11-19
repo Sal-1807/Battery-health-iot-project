@@ -79,3 +79,10 @@ export const CELL_STATE_LABEL: Record<string, string> = {
   confirmed: "Confirmed (operator)",
   unknown: "Unknown",
 };
+
+export const END_REASON: Record<string, string> = {
+  load_stopped: "load stopped",
+  telemetry_gap: "ended by telemetry gap",
+  telemetry_lost: "device stopped reporting",
+  battery_switched: "battery switched",
+};

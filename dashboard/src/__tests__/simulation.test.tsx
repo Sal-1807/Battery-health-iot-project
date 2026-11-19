@@ -3,14 +3,14 @@
 // value is read from the simulation results, except the analytic truths
 // (1000 mAh, 4.000 Wh), which come from physics, not from the code under test.
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import fixture from "./fixtures/simulation.json";
 import App from "../App";
 import Batteries from "../pages/Batteries";
 import Aging from "../pages/Aging";
 import TestManager from "../pages/TestManager";
 import { fmt } from "../lib/format";
-import type { Aging as AgingT, BatteryTest, CompareRow } from "../lib/api";
+import type { Aging as AgingT, BatterySummary, BatteryTest, CompareRow } from "../lib/api";
 
 const fx = fixture as unknown as Record<string, unknown> & {
   facts: { analytic: { charge_mah: number; energy_wh: number; test_uid: string }; full: { test_uid: string; retention_pct: number } };
@@ -68,19 +68,21 @@ describe("dashboard against simulation results", () => {
     expect(compare.find((r) => r.battery_id === "SIM-BAT-B-3000")!.stats.completed_cycles).toBe(0);  // partial only
   });
 
-  it("Aging shows the simulated retention and capacity for SIM-BAT-C-2500", async () => {
+  it("Battery Analysis shows the simulated retention and throughput for SIM-BAT-C-2500", async () => {
     serveFixture();
-    render(<Aging />);
+    const all = (fx["/api/batteries"] as { batteries: BatterySummary[] }).batteries;
+    const c = all.find((b) => b.battery_id === "SIM-BAT-C-2500")!;
+    render(<Aging battery={c} batteries={all} selectBattery={() => {}} />);
     const agingC = fx["/api/aging/SIM-BAT-C-2500"] as AgingT;
-    await screen.findAllByText("SIM-BAT-C-2500");
-    fireEvent.click(screen.getByRole("radio", { name: "SIM-BAT-C-2500" }));
+    await screen.findByText("Quick Test comparison");
     await waitFor(() => expect(screen.getByText(fmt(agingC.totals.delivered_mah, 1))).toBeTruthy());
-    expect(screen.getByText(`${fmt(agingC.retention.latest_pct, 1)} %`)).toBeTruthy();
+    expect(screen.getByText(new RegExp(`Latest retention: ${fmt(agingC.retention.latest_pct, 1)} %`))).toBeTruthy();
     expect(agingC.retention.latest_pct).toBeCloseTo(fx.facts.full.retention_pct, 6);
-    expect(screen.getByText(/delivered ÷ 2500 mAh label rating/)).toBeTruthy();
+    expect(screen.getByText(/throughput ÷ 2500 mAh rating/)).toBeTruthy();
+    expect(screen.getByText(/No valid Quick Test Cycles for SIM-BAT-C-2500 yet/)).toBeTruthy();   // supervised runs are not Quick Tests
   });
 
-  it("Test Manager history matches the simulated tests and CSV export is offered", async () => {
+  it("Quick Tests history matches the simulated tests and CSV export is offered", async () => {
     serveFixture();
     render(<TestManager />);
     const analytic = tests.find((t) => t.test_uid === fx.facts.analytic.test_uid)!;
@@ -89,10 +91,10 @@ describe("dashboard against simulation results", () => {
     expect(within(row).getByText(`${fmt(analytic.results.delivered_mah, 1)} mAh`)).toBeTruthy();
     expect(within(row).getByText("1000.0 mAh")).toBeTruthy();
     expect(within(row).getByText("4.000 Wh")).toBeTruthy();
-    expect(within(row).getByText("partial discharge (not a full cycle)")).toBeTruthy();
+    expect(within(row).getByText(/supervised \(legacy\) · partial discharge \(not a full cycle\)/)).toBeTruthy();
     const fullRow = screen.getByText(full.test_uid).closest("tr")!;
     expect(within(fullRow).getByText(/full discharge \(valid for capacity/)).toBeTruthy();
     expect(screen.getByText("Export CSV").closest("a")!.getAttribute("href")).toBe("/api/tests/export.csv");
-    expect(screen.getByText(/does not control hardware/)).toBeTruthy();
+    expect(screen.getByText(/do not control hardware/)).toBeTruthy();
   });
 });

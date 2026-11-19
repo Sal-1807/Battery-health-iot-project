@@ -45,8 +45,9 @@ describe("Batteries page", () => {
     expect(screen.getAllByText("3000 mAh").length).toBe(2);
     expect(screen.getByText("0.100")).toBeTruthy();         // A: 300 / 3000 EFC
     expect(screen.getByText("1.000")).toBeTruthy();         // C: 2500 / 2500 EFC
-    expect(screen.getAllByText("Unavailable").length).toBe(3);
+    expect(screen.getAllByText("Unavailable").length).toBe(3);   // SoH / RUL: no fabricated value
     expect(screen.getByText("on esp32-devkit-01")).toBeTruthy();
+    expect(screen.getAllByText("0 / 3").length).toBe(3);          // Quick Test Cycles per profile
   });
 
   it("switching requires an explicit confirmation and sends the selected battery", async () => {
@@ -73,7 +74,7 @@ describe("Batteries page", () => {
     render(<Batteries selectBattery={select} />);
     await waitFor(() => expect(screen.getAllByText("History").length).toBe(3));
     fireEvent.click(screen.getAllByText("History")[2]);
-    expect(select).toHaveBeenCalledWith("BAT-C-2500", "history");
+    expect(select).toHaveBeenCalledWith("BAT-C-2500", "analysis");
   });
 });
 
@@ -86,5 +87,29 @@ describe("Batteries page readiness", () => {
     });
     render(<Batteries selectBattery={() => {}} />);
     await screen.findByText(/has not sent any reading yet/);
+  });
+});
+
+describe("Batteries page archive", () => {
+  it("lists retired records like CELL-18650-01 read-only, separate from the profiles", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.includes("/compare")
+        ? { batteries: rows, note: "" }
+        : url.endsWith("/api/batteries")
+          ? { batteries: [{ battery_id: "CELL-18650-01", source: "hardware", archived: true, n_readings: 1234, latest_reading: null }] }
+          : { devices: [] };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const select = vi.fn();
+    render(<Batteries selectBattery={select} />);
+    await screen.findAllByText("BAT-A-3000");
+    expect(screen.queryByText("CELL-18650-01")).toBeNull();               // not in the comparison
+    const det = screen.getByText("Archived records (read-only)").closest("details")!;
+    det.open = true;
+    fireEvent(det, new Event("toggle"));
+    await screen.findByText("CELL-18650-01");
+    fireEvent.click(screen.getByText("View history (read-only)"));
+    expect(select).toHaveBeenCalledWith("CELL-18650-01", "analysis");
   });
 });

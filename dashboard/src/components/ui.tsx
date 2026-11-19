@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AlertOctagon,
   AlertTriangle,
@@ -245,5 +245,16 @@ export function Table({ head, children, empty }: { head: ReactNode[]; children: 
       </table>
       {empty && <p className="px-3 py-6 text-center text-xs text-ink-3">No rows.</p>}
     </div>
+  );
+}
+
+/** Collapsible section; its content (and any polling inside it) mounts only while open. */
+export function Collapsible({ title, defaultOpen = false, children }: { title: ReactNode; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <details className="rounded-xl border border-line bg-panel" open={defaultOpen} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
+      <summary className="cursor-pointer select-none px-5 py-3 text-sm font-semibold text-ink">{title}</summary>
+      {open && <div className="border-t border-line px-5 py-4">{children}</div>}
+    </details>
   );
 }

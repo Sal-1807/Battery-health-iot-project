@@ -137,12 +137,29 @@ def update_checklist(conn: sqlite3.Connection, uid: str, c: dict) -> dict:
 
 
 # ------------------------------------------------------------------ lifecycle
-def create_test(conn: sqlite3.Connection, battery_id: str, notes: Optional[str]) -> dict:
+def pending_disconnect(conn: sqlite3.Connection, battery_id: str, device_id: Optional[str]) -> Optional[str]:
+    """A finished quick test whose physical load disconnection has not been confirmed."""
+    row = conn.execute("SELECT test_uid FROM battery_tests WHERE kind='quick' AND state IN ('completed','aborted') "
+                       "AND started_ms IS NOT NULL AND disconnect_confirmed_at IS NULL "
+                       "AND (battery_id=? OR (device_id IS NOT NULL AND device_id=?)) ORDER BY id DESC LIMIT 1",
+                       (battery_id, device_id)).fetchone()
+    return row["test_uid"] if row else None
+
+
+def create_test(conn: sqlite3.Connection, battery_id: str, notes: Optional[str], kind: str = "quick",
+                duration_s: Optional[int] = None) -> dict:
     b = conn.execute("SELECT battery_id, managed FROM batteries WHERE battery_id=?", (battery_id,)).fetchone()
     if b is None:
         raise HTTPException(404, f"battery '{battery_id}' not found")
     if not b["managed"]:
         raise HTTPException(400, "tests can only be created for physical battery profiles")
+    a = battery_assignment(conn, battery_id)
+    pending = pending_disconnect(conn, battery_id, a["device_id"] if a else None)
+    if pending:
+        raise HTTPException(409, f"confirm that the load was physically disconnected after test {pending} "
+                                 "before starting another test")
+    if kind == "quick":
+        duration_s = duration_s or QUICK_DURATION_S
     now = _now_ms()
     day = _iso(now)[:10].replace("-", "")
     n = conn.execute("SELECT COUNT(*) AS n FROM battery_tests WHERE battery_id=?", (battery_id,)).fetchone()["n"] + 1
@@ -151,9 +168,11 @@ def create_test(conn: sqlite3.Connection, battery_id: str, notes: Optional[str])
         n += 1
         uid = f"T-{day}-{battery_id}-{n:03d}"
     history = [{"state": "not_started", "ms": now, "ts": _iso(now), "note": "created"}]
-    conn.execute("INSERT INTO battery_tests(test_uid, battery_id, state, created_at, notes, checklist, history) "
-                 "VALUES (?,?,?,?,?,?,?)", (uid, battery_id, "not_started", _iso(now), notes, "{}", json.dumps(history)))
-    return {"test_uid": uid, "battery_id": battery_id, "state": "not_started", "hardware_notice": HARDWARE_NOTICE}
+    conn.execute("INSERT INTO battery_tests(test_uid, battery_id, state, created_at, notes, checklist, history, kind, "
+                 "duration_s) VALUES (?,?,?,?,?,?,?,?,?)",
+                 (uid, battery_id, "not_started", _iso(now), notes, "{}", json.dumps(history), kind, duration_s))
+    return {"test_uid": uid, "battery_id": battery_id, "state": "not_started", "kind": kind, "duration_s": duration_s,
+            "hardware_notice": HARDWARE_NOTICE}
 
 
 ALLOWED = {
@@ -182,6 +201,10 @@ def transition(conn: sqlite3.Connection, uid: str, action: str, reason: Optional
         if a is None or a["device_id"] != t["device_id"]:
             raise HTTPException(409, f"{t['battery_id']} is no longer selected on device {t['device_id']}; "
                                      "re-check the battery identity")
+        pending = pending_disconnect(conn, t["battery_id"], t["device_id"])
+        if pending:
+            raise HTTPException(409, f"confirm that the load was physically disconnected after test {pending} "
+                                     "before starting another test")
         busy = conn.execute("SELECT test_uid FROM battery_tests WHERE state IN ('running','paused') AND "
                             "(battery_id=? OR device_id=?) AND test_uid!=?",
                             (t["battery_id"], t["device_id"], uid)).fetchone()
@@ -233,10 +256,12 @@ def compute_results(conn: sqlite3.Connection, t: dict, s: Settings, now_ms: Opti
     rows = [dict(r) for r in conn.execute(
         "SELECT ts_ms, voltage_v, current_a, power_w, temperature_c, device_id, routed_by FROM readings "
         "WHERE battery_id=? AND ts_ms BETWEEN ? AND ? ORDER BY ts_ms", (t["battery_id"], t["started_ms"], end))]
+    # initial = last AT-REST reading before the start (so voltage drop is measured from rest, not from a
+    # sample taken after the load was already connected); falls back to the first reading in the window
     before = conn.execute(
         "SELECT ts_ms, voltage_v, current_a, temperature_c FROM readings WHERE battery_id=? AND ts_ms<=? AND ts_ms>=? "
-        "ORDER BY ts_ms DESC LIMIT 1", (t["battery_id"], t["started_ms"], t["started_ms"] - REST_LOOKBACK_S * 1000)
-    ).fetchone()
+        "AND voltage_v IS NOT NULL AND (current_a IS NULL OR ABS(current_a) < ?) ORDER BY ts_ms DESC LIMIT 1",
+        (t["battery_id"], t["started_ms"], t["started_ms"] - REST_LOOKBACK_S * 1000, s.session_on_a)).fetchone()
 
     on = lambda i: i is not None and i >= s.session_on_a  # noqa: E731
     mah = wh = 0.0
@@ -293,6 +318,8 @@ def compute_results(conn: sqlite3.Connection, t: dict, s: Settings, now_ms: Opti
         "initial_current_a": init["current_a"] if init else None,
         "final_voltage_v": in_run[-1]["voltage_v"] if in_run else None,
         "min_loaded_voltage_v": min(loaded_v) if loaded_v else None,
+        "first_loaded_voltage_v": loaded_v[0] if loaded_v else None,
+        "last_loaded_voltage_v": loaded_v[-1] if loaded_v else None,
         "mean_current_a": (mah * 3.6 / on_time) if on_time else None,
         "peak_current_a": max((r["current_a"] for r in on_rows), default=None),
         "mean_power_w": (sum(powers) / len(powers)) if powers else None,
@@ -352,6 +379,171 @@ def validity(t: dict, r: dict, s: Settings) -> dict:
     return {"valid_for_full_capacity": ok, "checks": checks, "classification": cls}
 
 
+# ------------------------------------------------------------------ Quick Test Cycles
+# Protocol: 3 Quick Test Cycles per battery, each a supervised 300-second
+# measurement. A Quick Test Cycle is NOT an electrochemical charge-discharge cycle
+# and never changes EFC or the full-cycle count.
+QUICK_DURATION_S = 300
+QUICK_TARGET = 3
+QUICK_LOAD_SLACK_S = 20          # load may be connected up to 20 s after the software start
+AUTO_END_NOTE = ("software recording window ended automatically; this did NOT disconnect the battery or stop "
+                 "the discharge current")
+QUICK_MODEL_STATUS = {
+    "validated_model": False,
+    "message": "No validated capacity, SoH or RUL model exists for quick tests or for these physical cells. "
+               "Quick-test features are provided as inputs for experimental analysis only.",
+}
+
+
+def finalize_due(conn: sqlite3.Connection, s: Settings, now_ms: Optional[int] = None) -> list[str]:
+    """End the software recording of quick tests whose window has elapsed (results cover exactly the window)."""
+    now = now_ms or _now_ms()
+    done = []
+    for row in conn.execute("SELECT test_uid, started_ms, duration_s FROM battery_tests WHERE kind='quick' "
+                            "AND state IN ('running','paused') AND duration_s IS NOT NULL").fetchall():
+        end = row["started_ms"] + row["duration_s"] * 1000
+        if now >= end:
+            transition(conn, row["test_uid"], "complete", AUTO_END_NOTE, s, now_ms=end)
+            done.append(row["test_uid"])
+    return done
+
+
+def confirm_disconnect(conn: sqlite3.Connection, uid: str, s: Settings) -> dict:
+    """Record the operator's statement that the load was physically removed.
+    Refused while load current is still being measured; the software cannot verify it otherwise."""
+    t = _load(conn, uid)
+    if t["state"] not in FINAL:
+        raise HTTPException(409, "the test has not ended")
+    last = conn.execute("SELECT ts_ms, current_a FROM readings WHERE battery_id=? ORDER BY ts_ms DESC LIMIT 1",
+                        (t["battery_id"],)).fetchone()
+    recent = last is not None and (_now_ms() - last["ts_ms"]) / 1000 <= s.max_gap_s
+    if recent and last["current_a"] is not None and abs(last["current_a"]) >= s.session_on_a:
+        raise HTTPException(409, f"current of {last['current_a']:.3f} A is still being measured: the load is still "
+                                 "connected. Disconnect it physically, then confirm again.")
+    now = _iso(_now_ms())
+    conn.execute("UPDATE battery_tests SET disconnect_confirmed_at=? WHERE id=?", (now, t["id"]))
+    return {"test_uid": uid, "disconnect_confirmed_at": now,
+            "note": "Operator confirmation recorded. " + ("No load current is being measured."
+                                                          if recent else "No recent telemetry: not verifiable.")}
+
+
+def quick_status(t: dict, r: dict) -> dict:
+    """Classify a quick test. Only 'counted' tests are Quick Test Cycles."""
+    dur = t.get("duration_s") or QUICK_DURATION_S
+    checks = []
+
+    def add(name, ok, detail):
+        checks.append({"check": name, "ok": bool(ok), "detail": detail})
+
+    if t["state"] in ("not_started", "ready"):
+        return {"status": "not_started", "label": "Not started", "checks": []}
+    if t["state"] in ("running", "paused"):
+        return {"status": "in_progress", "label": "Recording", "checks": []}
+    add("completed", t["state"] == "completed", f"test {t['state']}")
+    if not r.get("available"):
+        add("telemetry", False, r.get("reason", "no data"))
+        return {"status": "interrupted" if t["state"] == "aborted" else "invalid", "label": "Interrupted", "checks": checks}
+    add("not paused", not r["paused"], "paused" if r["paused"] else "never paused")
+    add("battery stayed selected", r["battery_stayed_selected"], "same battery throughout"
+        if r["battery_stayed_selected"] else "battery selection changed during the test")
+    add(f"full {dur} s window recorded", r["elapsed_s"] >= dur - 1, f"{r['elapsed_s']:.0f} s of {dur} s")
+    add("load current for the whole window", r["load_on_s"] >= dur - QUICK_LOAD_SLACK_S and r["delivered_mah"] > 0,
+        f"load current measured for {r['load_on_s']:.0f} s (need >= {dur - QUICK_LOAD_SLACK_S} s)")
+    add("no telemetry gaps", not r["gaps"], f"{len(r['gaps'])} gap(s)" if r["gaps"] else "continuous")
+    n = max(r["n_readings"], 1)
+    frac = r["missing_measurements"]["readings_with_any_missing"] / n
+    add("measurements complete", frac <= MAX_MISSING_FRAC, f"{frac:.1%} readings with a missing value")
+    add("enough data", r["n_readings"] >= MIN_READINGS, f"{r['n_readings']} readings (need >= {MIN_READINGS})")
+    ok = {c["check"]: c["ok"] for c in checks}
+    if t["state"] == "aborted" or not ok["not paused"] or not ok["battery stayed selected"]:
+        status, label = "interrupted", "Interrupted"
+    elif not ok["no telemetry gaps"] or not ok["measurements complete"] or not ok["enough data"]:
+        status, label = "telemetry_gap", "Telemetry gap / missing data"
+    elif not ok[f"full {dur} s window recorded"] or not ok["load current for the whole window"]:
+        status, label = "incomplete", "Incomplete"
+    else:
+        status, label = "counted", "Valid Quick Test Cycle"
+    return {"status": status, "label": label, "checks": checks}
+
+
+def _qt_metrics(t: dict, r: dict) -> dict:
+    mah, wh = r["delivered_mah"], r["delivered_wh"]
+    v0, v1 = r.get("initial_voltage_v"), r.get("final_voltage_v")
+    return {
+        "test_uid": t["test_uid"], "completed_at": _iso(t["ended_ms"]), "duration_s": r["elapsed_s"],
+        "initial_voltage_v": v0, "final_voltage_v": v1,
+        "voltage_drop_v": (v0 - v1) if v0 is not None and v1 is not None else None,
+        "mean_voltage_v": (wh / (mah / 1000)) if mah else None,
+        "mean_current_a": r.get("mean_current_a"), "mean_power_w": r.get("mean_power_w"),
+        "max_temperature_c": r.get("max_temperature_c"),
+        "temperature_rise_c": (r["max_temperature_c"] - r["initial_temperature_c"])
+        if r.get("max_temperature_c") is not None and r.get("initial_temperature_c") is not None else None,
+        "delivered_mah": mah, "delivered_wh": wh,
+    }
+
+
+QT_METRICS = ("mean_voltage_v", "mean_current_a", "mean_power_w", "max_temperature_c", "voltage_drop_v",
+              "delivered_mah", "delivered_wh")
+
+
+def quick_tests(conn: sqlite3.Connection, battery_id: str) -> dict:
+    """Quick tests of ONE battery: counted cycles (numbered), other attempts with their
+    status, protocol progress and averages over the first 3 counted cycles."""
+    rows = conn.execute("SELECT test_uid FROM battery_tests WHERE battery_id=? AND kind='quick' ORDER BY id",
+                        (battery_id,)).fetchall()
+    cycles, attempts = [], []
+    for row in rows:
+        t = _load(conn, row["test_uid"])
+        r = t["final_results"] if t["state"] in FINAL and t["final_results"] else {}
+        q = quick_status(t, r)
+        entry = {"test_uid": t["test_uid"], "state": t["state"], "status": q["status"], "label": q["label"]}
+        if q["status"] == "counted":
+            cycles.append({"number": len(cycles) + 1, **_qt_metrics(t, r)})
+            entry["number"] = len(cycles)
+        attempts.append(entry)
+    protocol = cycles[:QUICK_TARGET]
+    summary = {}
+    for k in QT_METRICS:
+        vals = [c[k] for c in protocol if c[k] is not None]
+        summary[k] = {"mean": sum(vals) / len(vals), "min": min(vals), "max": max(vals)} if vals else None
+    return {
+        "battery_id": battery_id, "count": len(cycles), "target": QUICK_TARGET, "duration_s": QUICK_DURATION_S,
+        "next_test_number": min(len(cycles) + 1, QUICK_TARGET) if len(cycles) < QUICK_TARGET else None,
+        "complete": len(cycles) >= QUICK_TARGET,
+        "definition": "A Quick Test Cycle is one supervised 300-second measurement completed with valid telemetry. "
+                      "It is not a full charge-discharge cycle and does not change EFC.",
+        "cycles": cycles, "attempts": attempts, "summary": summary, "last": cycles[-1] if cycles else None,
+        "not_counted": {k: sum(1 for a in attempts if a["status"] == k)
+                        for k in ("interrupted", "incomplete", "telemetry_gap", "invalid")},
+        "model_status": QUICK_MODEL_STATUS,
+    }
+
+
+def compare_quick(per_battery: list[dict]) -> dict:
+    """Side-by-side averages over each battery's 3 protocol tests, with differences from the group mean."""
+    rows = []
+    group = {}
+    for k in QT_METRICS:
+        means = [q["summary"][k]["mean"] for q in per_battery if q["summary"].get(k)]
+        group[k] = sum(means) / len(means) if means else None
+    for q in per_battery:
+        row = {"battery_id": q["battery_id"], "count": q["count"], "target": q["target"]}
+        for k in QT_METRICS:
+            m = q["summary"].get(k)
+            row[k] = m["mean"] if m else None
+            row[f"{k}_range"] = (m["max"] - m["min"]) if m else None
+            row[f"{k}_diff_pct"] = (100 * (m["mean"] - group[k]) / group[k]) if m and group[k] else None
+        rows.append(row)
+    return {"rows": rows, "group_mean": group,
+            "note": "Averages over each battery's first 3 valid Quick Test Cycles. Differences are relative to the "
+                    "mean of the batteries shown. Quick-test mAh is set by load current x 300 s; it is not a capacity."}
+
+
+QT_FEATURES = ["battery_id", "rated_capacity_mah", "number", "test_uid", "completed_at", "duration_s",
+               "initial_voltage_v", "final_voltage_v", "voltage_drop_v", "mean_voltage_v", "mean_current_a",
+               "mean_power_w", "max_temperature_c", "temperature_rise_c", "delivered_mah", "delivered_wh"]
+
+
 def test_view(conn: sqlite3.Connection, t: dict, s: Settings) -> dict:
     final = t["state"] in FINAL and t["final_results"]
     r = t["final_results"] if final else compute_results(conn, t, s)
@@ -374,7 +566,9 @@ def test_view(conn: sqlite3.Connection, t: dict, s: Settings) -> dict:
         "ended_at": _iso(t["ended_ms"]) if t["ended_ms"] else None, "notes": t["notes"],
         "abort_reason": t["abort_reason"], "checklist": t["checklist"],
         "checklist_problems": checklist_problems(t["checklist"] or {}), "history": t["history"],
+        "kind": t.get("kind") or "supervised", "duration_s": t.get("duration_s"),
         "results": r, "results_frozen": bool(final), "validity": validity(t, r, s),
+        "quick_test": _quick_view(conn, t, r),
         "hardware_state": {"description": hw, "last_reading_ts": last["ts"] if last else None,
                            "battery_selected_on": a["device_id"] if a else None},
         "hardware_notice": HARDWARE_NOTICE, "disconnect_warning": DISCONNECT_WARNING,
@@ -382,7 +576,28 @@ def test_view(conn: sqlite3.Connection, t: dict, s: Settings) -> dict:
     }
 
 
-CSV_COLS = ["test_uid", "battery_id", "device_id", "state", "classification", "valid_for_full_capacity", "created_at",
+def _quick_view(conn: sqlite3.Connection, t: dict, r: dict) -> Optional[dict]:
+    if t.get("kind") != "quick":
+        return None
+    q = quick_status(t, r)
+    number = None
+    if q["status"] == "counted":
+        number = next((c["number"] for c in quick_tests(conn, t["battery_id"])["cycles"]
+                       if c["test_uid"] == t["test_uid"]), None)
+    dur = t.get("duration_s") or QUICK_DURATION_S
+    elapsed = None
+    if t["started_ms"]:
+        end = t["ended_ms"] or _now_ms()
+        elapsed = min((end - t["started_ms"]) / 1000, dur)
+    return {**q, "number": number, "target": QUICK_TARGET, "duration_s": dur,
+            "elapsed_s": elapsed, "remaining_s": None if elapsed is None else max(dur - elapsed, 0.0),
+            "auto_ended": any(e.get("note") == AUTO_END_NOTE for e in t["history"]),
+            "disconnect_confirmed_at": t.get("disconnect_confirmed_at"),
+            "needs_disconnect_confirmation": t["state"] in FINAL and t["started_ms"] is not None
+            and not t.get("disconnect_confirmed_at")}
+
+
+CSV_COLS = ["test_uid", "battery_id", "device_id", "state", "quick_test_cycle", "quick_test_status", "classification", "valid_for_full_capacity", "created_at",
             "started_at", "ended_at", "elapsed_s", "initial_voltage_v", "final_voltage_v", "min_loaded_voltage_v",
             "mean_current_a", "peak_current_a", "mean_power_w", "initial_temperature_c", "max_temperature_c",
             "delivered_mah", "delivered_wh", "n_gaps", "readings_with_missing", "paused", "battery_stayed_selected",
@@ -398,6 +613,8 @@ def tests_csv(views: list[dict]) -> str:
         c = v["checklist"] or {}
         w.writerow({
             "test_uid": v["test_uid"], "battery_id": v["battery_id"], "device_id": v["device_id"], "state": v["state"],
+            "quick_test_cycle": (v["quick_test"] or {}).get("number"),
+            "quick_test_status": (v["quick_test"] or {}).get("status"),
             "classification": v["validity"]["classification"],
             "valid_for_full_capacity": v["validity"]["valid_for_full_capacity"], "created_at": v["created_at"],
             "started_at": v["started_at"], "ended_at": v["ended_at"],

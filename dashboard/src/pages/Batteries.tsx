@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { ArrowRightLeft, Cable } from "lucide-react";
 import { api, ApiError, type CompareRow } from "../lib/api";
 import { usePoll } from "../lib/hooks";
-import { CELL_STATE_LABEL, fmt, fmtTime } from "../lib/format";
-import { Card, EmptyState, ErrorBox, Loading, Pill, Table } from "../components/ui";
+import { CELL_STATE_LABEL, fmt, fmtTime, SOURCE_LABEL } from "../lib/format";
+import type { PageProps } from "../App";
+import Alerts from "./Alerts";
+import SystemPage from "./System";
+import { Card, Collapsible, EmptyState, ErrorBox, Loading, Pill, Table } from "../components/ui";
 
 const DEFAULT_DEVICE = "esp32-devkit-01";
 
@@ -129,9 +132,35 @@ function ConnectedBattery({ profiles, onChanged }: { profiles: CompareRow[]; onC
   );
 }
 
-export default function Batteries({ selectBattery }: { selectBattery: (id: string, page?: string) => void }) {
+function Archive({ selectBattery }: { selectBattery?: (id: string, page?: string) => void }) {
+  const all = usePoll(() => api.batteries(), 30000, []);
+  const archived = (all.data?.batteries ?? []).filter((b) => b.archived);
+  if (!archived.length) return <p className="text-sm text-ink-3">No archived records.</p>;
+  return (
+    <Table head={["Record", "Origin", "Readings", "Last reading", ""]}>
+      {archived.map((b) => (
+        <tr key={b.battery_id}>
+          <td className="px-3 py-2 text-ink">{b.battery_id}</td>
+          <td className="px-3 py-2">{SOURCE_LABEL[b.source] ?? b.source}</td>
+          <td className="px-3 py-2">{b.n_readings.toLocaleString()}</td>
+          <td className="px-3 py-2">{b.latest_reading ? fmtTime(b.latest_reading.ts, true) : "—"}</td>
+          <td className="px-3 py-2">
+            {selectBattery && (
+              <button className="text-accent hover:underline" onClick={() => selectBattery(b.battery_id, "analysis")}>
+                View history (read-only)
+              </button>
+            )}
+          </td>
+        </tr>
+      ))}
+    </Table>
+  );
+}
+
+export default function Batteries({ selectBattery, battery }: Partial<PageProps>) {
   const cmp = usePoll(() => api.compare(), 10000, []);
   const rows = cmp.data?.batteries ?? [];
+  const open = (id: string, page: string) => selectBattery?.(id, page);
 
   return (
     <div className="space-y-6">
@@ -140,7 +169,7 @@ export default function Batteries({ selectBattery }: { selectBattery: (id: strin
 
       <Card
         title="Battery comparison"
-        subtitle="Measured per battery. EFC = total discharged charge ÷ that battery's rated capacity (throughput, not a cycle count). Completed cycles = rested full charge to cutoff without gaps."
+        subtitle="Quick Test Cycles are 300 s supervised measurements, not full charge–discharge cycles. EFC = measured discharge throughput ÷ the battery's own rated capacity."
       >
         {cmp.loading ? (
           <Loading />
@@ -148,60 +177,60 @@ export default function Batteries({ selectBattery }: { selectBattery: (id: strin
           <EmptyState title="No battery profiles" />
         ) : (
           <Table
-            head={["Battery", "Rated", "Connected", "Presence", "Sessions", "Throughput (mAh)", "Energy (Wh)", "EFC",
-                   "Completed cycles", "Latest capacity meas.", "SoH / RUL", ""]}
+            head={["Battery", "Rated (label)", "Connected", "Cell presence", "Quick Test Cycles", "Throughput (mAh)",
+                   "Energy (Wh)", "EFC", "Full cycles", "SoH / RUL", ""]}
           >
-            {rows.map((r) => {
-              const last = r.stats.capacity_measurements[r.stats.capacity_measurements.length - 1];
-              return (
-                <tr key={r.battery_id}>
-                  <td className="px-3 py-2 font-medium text-ink">
-                    {r.battery_id}
-                    {r.source === "simulation" && <span className="ml-2"><Pill tone="warning">SIMULATED</Pill></span>}
-                  </td>
-                  <td className="px-3 py-2">{fmt(r.rated_capacity_mah, 0)} mAh</td>
-                  <td className="px-3 py-2">
-                    {r.assignment ? <Pill tone="accent">on {r.assignment.device_id}</Pill> : <span className="text-ink-3">not selected</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    {r.presence_evidence
-                      ? r.presence_evidence === "operator" ? "confirmed" : "verified (current)"
-                      : r.last_cell_state ? CELL_STATE_LABEL[r.last_cell_state] : "—"}
-                  </td>
-                  <td className="px-3 py-2">
-                    {r.stats.n_sessions}
-                    {r.stats.n_partial_sessions > 0 && <span className="text-ink-3"> ({r.stats.n_partial_sessions} partial)</span>}
-                  </td>
-                  <td className="px-3 py-2">{fmt(r.stats.total_discharged_mah, 1)}</td>
-                  <td className="px-3 py-2">{fmt(r.stats.total_energy_wh, 3)}</td>
-                  <td className="px-3 py-2">{fmt(r.stats.equivalent_full_cycles, 3)}</td>
-                  <td className="px-3 py-2">{r.stats.completed_cycles}</td>
-                  <td className="px-3 py-2" title="Charge of the latest completed experimental cycle (unvalidated protocol)">
-                    {last ? `${fmt(last.charge_mah, 0)} mAh` : "not measured"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Pill tone="neutral">Unavailable</Pill>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2">
-                    <button className="text-accent hover:underline" onClick={() => selectBattery(r.battery_id, "history")}>
-                      History
-                    </button>
-                    <span className="text-ink-3"> · </span>
-                    <button className="text-accent hover:underline" onClick={() => selectBattery(r.battery_id, "overview")}>
-                      Overview
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+            {rows.map((r) => (
+              <tr key={r.battery_id}>
+                <td className="px-3 py-2 font-medium text-ink">
+                  {r.battery_id}
+                  {r.source === "simulation" && <span className="ml-2"><Pill tone="warning">SIMULATED</Pill></span>}
+                </td>
+                <td className="px-3 py-2">{fmt(r.rated_capacity_mah, 0)} mAh</td>
+                <td className="px-3 py-2">
+                  {r.assignment ? <Pill tone="accent">on {r.assignment.device_id}</Pill> : <span className="text-ink-3">not selected</span>}
+                </td>
+                <td className="px-3 py-2">
+                  {r.presence_evidence
+                    ? r.presence_evidence === "operator" ? "confirmed" : "verified (current)"
+                    : r.last_cell_state ? CELL_STATE_LABEL[r.last_cell_state] : "—"}
+                </td>
+                <td className="px-3 py-2 font-semibold text-ink">{r.quick_test_cycles ?? 0} / 3</td>
+                <td className="px-3 py-2">{fmt(r.stats.total_discharged_mah, 1)}</td>
+                <td className="px-3 py-2">{fmt(r.stats.total_energy_wh, 3)}</td>
+                <td className="px-3 py-2">{fmt(r.stats.equivalent_full_cycles, 3)}</td>
+                <td className="px-3 py-2">{r.stats.completed_cycles}</td>
+                <td className="px-3 py-2">
+                  {r.soh === "experimental" ? <Pill tone="warning">Experimental</Pill> : <Pill tone="neutral">Unavailable</Pill>}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  <button className="text-accent hover:underline" onClick={() => open(r.battery_id, "analysis")}>
+                    History
+                  </button>
+                  <span className="text-ink-3"> · </span>
+                  <button className="text-accent hover:underline" onClick={() => open(r.battery_id, "overview")}>
+                    Overview
+                  </button>
+                </td>
+              </tr>
+            ))}
           </Table>
         )}
-        <p className="mt-3 text-xs text-ink-3">
-          Measured capacities come from an unvalidated test protocol and are not compared to the label as a health figure.
-          SoH/RUL stay unavailable for physical batteries until predictions are validated; the NASA demonstration is
-          under NASA replay.
-        </p>
       </Card>
+
+      <Collapsible title="Alerts and thresholds">
+        <Alerts battery={battery} batteries={[]} batteriesLoading={false} />
+      </Collapsible>
+      <Collapsible title="System status (API, devices, model)">
+        <SystemPage />
+      </Collapsible>
+      <Collapsible title="Archived records (read-only)">
+        <p className="mb-3 text-xs text-ink-3">
+          Retired IDs (for example CELL-18650-01, used before the battery profiles existed), unassigned readings and
+          older demo data. They are kept as recorded and are never merged into BAT-A, BAT-B or BAT-C.
+        </p>
+        <Archive selectBattery={selectBattery} />
+      </Collapsible>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import TestManager from "../pages/TestManager";
-import type { BatteryTest, TestState } from "../lib/api";
+import type { BatteryTest, QuickOverview, TestState } from "../lib/api";
 
 beforeAll(() => {
   globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
@@ -11,87 +11,145 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+type Q = NonNullable<BatteryTest["quick_test"]>;
+const quick = (over: Partial<Q> = {}): Q => ({
+  status: "in_progress", label: "In progress", checks: [], number: null, target: 3, duration_s: 300,
+  elapsed_s: 120, remaining_s: 180, auto_ended: false, disconnect_confirmed_at: null, needs_disconnect_confirmation: false, ...over,
+});
 const mk = (uid: string, battery: string, state: TestState, over: Partial<BatteryTest> = {}): BatteryTest => ({
   test_uid: uid, battery_id: battery, device_id: "esp32-devkit-01", state, created_at: "2026-11-19T00:00:00Z",
-  started_at: null, ended_at: null, notes: null, abort_reason: null, checklist: {}, checklist_problems: ["supervisor name missing"],
+  started_at: null, ended_at: null, notes: null, abort_reason: null, checklist: {}, checklist_problems: [],
   history: [], results: { available: false, reason: "test has not started" }, results_frozen: false,
   validity: { valid_for_full_capacity: false, classification: "not started", checks: [] },
   hardware_state: { description: "load current 0.370 A measured: a load appears to be connected", last_reading_ts: null, battery_selected_on: "esp32-devkit-01" },
   hardware_notice: "Software test state only.", disconnect_warning: "Physically disconnect the discharge load now.", soh: "unavailable", rul: "unavailable",
-  ...over,
+  kind: "quick", duration_s: 300, quick_test: quick(), ...over,
 });
-const done = mk("T-20261119-BAT-C-2500-001", "BAT-C-2500", "completed", {
-  results: { available: true, delivered_mah: 83.3, delivered_wh: 0.295, elapsed_s: 610, load_on_s: 600, initial_voltage_v: 4.18,
-             final_voltage_v: 3.4, min_loaded_voltage_v: 3.6, mean_current_a: 0.5, gaps: [{ from: "2026-11-19T00:03:00Z", to: "2026-11-19T00:04:45Z", duration_s: 105 }],
-             missing_measurements: { voltage_v: 0, current_a: 0, temperature_c: 0, readings_with_any_missing: 0 }, paused: false, battery_stayed_selected: true },
-  validity: { valid_for_full_capacity: false, classification: "partial discharge (not a full cycle)",
-              checks: [{ check: "reached cutoff", ok: false, detail: "lowest loaded voltage 3.6 V vs cutoff 3.0 V" }] },
+const counted = mk("T-20261119-BAT-C-2500-001", "BAT-C-2500", "completed", {
+  results: { available: true, delivered_mah: 30.4, delivered_wh: 0.118, elapsed_s: 300, initial_voltage_v: 4.05, final_voltage_v: 3.92, mean_current_a: 0.365, mean_power_w: 1.42, max_temperature_c: 26.1 },
+  quick_test: quick({ status: "counted", label: "Valid Quick Test Cycle", number: 1, elapsed_s: 300, remaining_s: 0, auto_ended: true, disconnect_confirmed_at: "2026-11-19T00:06:00Z",
+    checks: [{ check: "full 300 s window", ok: true, detail: "300 s recorded" }] }),
 });
+const gap = mk("T-20261119-BAT-C-2500-002", "BAT-C-2500", "completed", {
+  results: { available: true, delivered_mah: 22.0, delivered_wh: 0.085, elapsed_s: 300, initial_voltage_v: 4.0, final_voltage_v: 3.9 },
+  quick_test: quick({ status: "telemetry_gap", label: "Telemetry gap — not counted", elapsed_s: 300, remaining_s: 0, disconnect_confirmed_at: "2026-11-19T00:16:00Z",
+    checks: [{ check: "no telemetry gaps", ok: false, detail: "1 gap of 105 s" }] }),
+});
+const qb = (id: string, cycles: number) => ({
+  battery_id: id, count: cycles, target: 3, duration_s: 300, next_test_number: cycles >= 3 ? null : cycles + 1, complete: cycles >= 3, definition: "",
+  cycles: Array.from({ length: cycles }, (_, i) => ({ ...counted.results, number: i + 1, test_uid: `X${i}`, completed_at: "", duration_s: 300 })) as unknown as QuickOverview["batteries"][0]["cycles"],
+  attempts: [], summary: {}, not_counted: id === "BAT-C-2500" ? { telemetry_gap: 1 } : {},
+});
+const overview = { batteries: [qb("BAT-A-3000", 3), qb("BAT-B-3000", 0), qb("BAT-C-2500", 1)], comparison: { rows: [], group_mean: {}, note: "" },
+  model_status: { validated_model: false, message: "" }, protocol: { duration_s: 300, target_per_battery: 3 } };
 
-function mockApi(state: { running: BatteryTest }, calls: { url: string; init?: RequestInit }[]) {
+function mockApi(state: { current: BatteryTest }, calls: { url: string; init?: RequestInit }[] = [], refuseDisconnect = false) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
     calls.push({ url, init });
     let body: unknown;
-    if (url.includes("/api/batteries/compare")) {
-      body = { batteries: ["BAT-A-3000", "BAT-B-3000", "BAT-C-2500"].map((id) => ({ battery_id: id, source: "hardware" })) };
-    } else if (url.match(/\/api\/tests\/[^/]+\/(start|pause|resume|complete|abort)$/)) {
+    let status = 200;
+    if (url.includes("/api/quick-tests")) body = overview;
+    else if (url.endsWith("/confirm-disconnect")) {
+      if (refuseDisconnect) { status = 409; body = { detail: "Load current 0.36 A is still being measured. Disconnect the load first." }; }
+      else {
+        state.current = { ...state.current, quick_test: { ...state.current.quick_test!, needs_disconnect_confirmation: false, disconnect_confirmed_at: "now" } };
+        body = { ok: true, note: "Recorded. This is your confirmation, not a hardware action." };
+      }
+    } else if (url.match(/\/api\/tests\/[^/]+\/(start|complete|abort)$/)) {
       const action = url.split("/").pop()!;
-      const target = { start: "running", pause: "paused", resume: "running", complete: "completed", abort: "aborted" }[action] as TestState;
-      state.running = { ...state.running, state: target };
-      body = { state: target, hardware_notice: "Software test state only.", ...(action !== "start" && action !== "resume" ? { warning: "Physically disconnect the discharge load now. The software cannot do it." } : {}) };
-    } else if (url.match(/\/api\/tests\/T-[^/]+$/)) {
-      body = url.endsWith(done.test_uid) ? done : state.running;
+      const target = { start: "running", complete: "completed", abort: "aborted" }[action] as TestState;
+      state.current = { ...state.current, state: target };
+      body = { state: target };
+    } else if (url.match(/\/api\/tests\/T-[^/?]+$/)) {
+      body = [counted, gap].find((t) => url.endsWith(t.test_uid)) ?? state.current;
+    } else if (url.match(/\/api\/tests(\?|$)/) && init?.method === "POST") {
+      body = { test_uid: "T-NEW" };
     } else {
-      const all = [state.running, done];
+      const all = [state.current, counted, gap];
       const f = new URL(url, "http://x").searchParams.get("battery_id");
       body = { tests: f ? all.filter((t) => t.battery_id === f) : all };
     }
-    return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
   });
 }
 
-describe("Test Manager page", () => {
-  it("separates software test state from measured hardware state and always warns", async () => {
-    mockApi({ running: mk("T-20261119-BAT-A-3000-001", "BAT-A-3000", "running") }, []);
+describe("Quick Tests page", () => {
+  it("always states that software cannot disconnect the load, and shows 3-test progress per battery", async () => {
+    mockApi({ current: mk("T-20261119-BAT-A-3000-001", "BAT-B-3000", "running") });
     render(<TestManager />);
-    expect(screen.getByText(/does not control hardware/)).toBeTruthy();
+    expect(screen.getByText(/They do not control hardware/)).toBeTruthy();
     expect(screen.getByText(/physically disconnect the discharge load/i)).toBeTruthy();
-    await screen.findByText("Test state (software record)");
-    expect(screen.getByText("Hardware state (measured, not controlled)")).toBeTruthy();
-    expect(screen.getByText(/a load appears to be connected/)).toBeTruthy();
-    expect(screen.getAllByText("Running").length).toBeGreaterThan(0);
+    await screen.findByText("3 / 3 done");
+    expect(screen.getByText("Next: Test 1/3")).toBeTruthy();       // BAT-B
+    expect(screen.getByText("Next: Test 2/3")).toBeTruthy();       // BAT-C
+    expect(screen.getByText("Not counted: 1 telemetry gap")).toBeTruthy();
+    await screen.findByText("Hardware (measured, not controlled)");
   });
 
-  it("only enables valid transitions and shows the disconnect warning after pausing", async () => {
+  it("counts down the 300 s window and says the timer does not stop the current", async () => {
+    mockApi({ current: mk("T-20261119-BAT-B-3000-001", "BAT-B-3000", "running") });
+    render(<TestManager />);
+    await screen.findByText("Software recording window");
+    expect(screen.getByText(/does/).closest("p")!.textContent).toMatch(/does not\s+disconnect the battery or stop the discharge current/);
+    const bar = screen.getByRole("progressbar");
+    expect(Number(bar.getAttribute("aria-valuenow"))).toBeGreaterThanOrEqual(120);
+    expect(bar.getAttribute("aria-valuemax")).toBe("300");
+    await waitFor(() => expect(Number(bar.getAttribute("aria-valuenow"))).toBeGreaterThanOrEqual(121), { timeout: 2500 });   // ticks locally
+    expect((screen.getByRole("button", { name: "Start recording" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Stop early" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("after the window ends, requires a physical-disconnect confirmation before the next test", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
-    mockApi({ running: mk("T-20261119-BAT-A-3000-001", "BAT-A-3000", "running") }, calls);
+    const ended = mk("T-20261119-BAT-B-3000-001", "BAT-B-3000", "completed", {
+      quick_test: quick({ status: "counted", label: "Valid", number: 1, elapsed_s: 300, remaining_s: 0, auto_ended: true, needs_disconnect_confirmation: true }),
+    });
+    mockApi({ current: ended }, calls);
     render(<TestManager />);
-    await screen.findByText("Test state (software record)");
-    expect((screen.getByRole("button", { name: "Start test record" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Resume" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
-    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/pause"))).toBe(true));
-    await screen.findByText(/⚠ Physically disconnect the discharge load now/);
+    await screen.findByText(/Test ended — physically disconnect the battery \/ load now/);
+    expect(screen.getByText(/The 300-second recording window ended/)).toBeTruthy();
+    expect(screen.queryByText("Software recording window")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "I have physically disconnected the load" }));
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/confirm-disconnect") && c.init?.method === "POST")).toBe(true));
+    await waitFor(() => expect(screen.queryByText(/Test ended — physically disconnect/)).toBeNull());
   });
 
-  it("shows a partial discharge as not a full cycle, with gaps, in the history", async () => {
-    mockApi({ running: mk("T-20261119-BAT-A-3000-001", "BAT-A-3000", "ready") }, []);
+  it("shows the backend's refusal when current is still measured", async () => {
+    const ended = mk("T-20261119-BAT-B-3000-001", "BAT-B-3000", "completed", {
+      quick_test: quick({ status: "counted", label: "Valid", number: 1, elapsed_s: 300, remaining_s: 0, auto_ended: true, needs_disconnect_confirmation: true }),
+    });
+    mockApi({ current: ended }, [], true);
     render(<TestManager />);
-    await screen.findByText(done.test_uid);
-    expect(screen.getByText("partial discharge (not a full cycle)")).toBeTruthy();
-    fireEvent.click(screen.getAllByRole("button", { name: "Open" })[1]);
-    await screen.findByText("1 telemetry gap(s)");
-    expect(screen.getByText("not valid for full-capacity analysis")).toBeTruthy();
-    expect(screen.getByText(/SoH \/ RUL: unavailable/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "I have physically disconnected the load" }));
+    await screen.findByText(/is still being measured/);
+    expect(screen.getByText(/Test ended — physically disconnect/)).toBeTruthy();
   });
 
-  it("shows the checklist for a not-started test and filters history per battery", async () => {
+  it("lists every test with valid and not-counted results, and opens validity checks", async () => {
+    mockApi({ current: mk("T-20261119-BAT-A-3000-009", "BAT-A-3000", "not_started", { quick_test: quick({ status: "not_started", label: "Not started", elapsed_s: null }) }) });
+    render(<TestManager />);
+    await screen.findByText(counted.test_uid);
+    expect(screen.getByText("Valid 1/3")).toBeTruthy();
+    expect(screen.getAllByText("Telemetry gap — not counted").length).toBeGreaterThan(0);
+    expect(screen.getByText("Pre-test checklist")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "Open" })[2]);
+    await screen.findByText("Quick Test validity");
+    expect(screen.getByText("no telemetry gaps")).toBeTruthy();
+    expect(screen.getByText(/not a full charge–discharge cycle/)).toBeTruthy();
+  });
+
+  it("creates a 5-minute Quick Test for the chosen battery and filters history", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
-    mockApi({ running: mk("T-20261119-BAT-A-3000-001", "BAT-A-3000", "not_started") }, calls);
+    mockApi({ current: mk("T-20261119-BAT-A-3000-001", "BAT-A-3000", "completed", { quick_test: quick({ status: "counted", label: "Valid", number: 3 }) }) }, calls);
     render(<TestManager />);
-    await screen.findByText("Pre-test checklist");
-    expect(screen.getByText(/the software does not cut off/)).toBeTruthy();
+    const sel = (await screen.findByLabelText("New test battery")) as HTMLSelectElement;
+    await waitFor(() => expect(sel.options.length).toBe(3));
+    fireEvent.change(sel, { target: { value: "BAT-C-2500" } });
+    fireEvent.click(screen.getByRole("button", { name: "New 5-minute Quick Test" }));
+    await waitFor(() => expect(calls.some((c) => c.init?.method === "POST" && /\/api\/tests$/.test(c.url))).toBe(true));
+    const post = calls.find((c) => c.init?.method === "POST" && /\/api\/tests$/.test(c.url))!;
+    expect(JSON.parse(String(post.init!.body))).toMatchObject({ battery_id: "BAT-C-2500", kind: "quick" });
     fireEvent.click(screen.getByRole("radio", { name: "BAT-C-2500" }));
     await waitFor(() => expect(calls.some((c) => c.url.includes("/api/tests?battery_id=BAT-C-2500"))).toBe(true));
     expect(screen.getByText("Export CSV").closest("a")!.getAttribute("href")).toContain("battery_id=BAT-C-2500");

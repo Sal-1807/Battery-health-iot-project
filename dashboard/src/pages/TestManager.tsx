@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, ClipboardCheck, Download, Power, XCircle } from "lucide-react";
-import { api, ApiError, type BatteryTest, type TestChecklist, type TestState } from "../lib/api";
+import { CheckCircle2, ClipboardCheck, Download, Power, Timer as TimerIcon, Unplug, XCircle } from "lucide-react";
+import { api, ApiError, type BatteryTest, type QuickStatus, type TestChecklist, type TestState } from "../lib/api";
 import { usePoll } from "../lib/hooks";
 import { fmt, fmtDuration, fmtTime } from "../lib/format";
-import { Card, ErrorBox, Loading, Pill, Segmented, StatTile, Table } from "../components/ui";
+import { Card, EmptyState, ErrorBox, Loading, Pill, Segmented, StatTile, Table } from "../components/ui";
 
 const STATE_LABEL: Record<TestState, string> = {
   not_started: "Not Started", ready: "Ready", running: "Running", paused: "Paused", completed: "Completed", aborted: "Aborted",
@@ -24,11 +24,11 @@ export function HardwareWarning() {
     <div role="alert" className="flex gap-3 rounded-lg border-2 border-critical/60 bg-critical/10 px-4 py-3 text-sm text-ink">
       <Power size={20} className="mt-0.5 shrink-0 text-critical" />
       <div>
-        <p className="font-semibold">The Test Manager records experiments. It does not control hardware.</p>
+        <p className="font-semibold">Quick Tests record measurements. They do not control hardware.</p>
         <p className="mt-0.5 text-ink-2">
-          Starting, pausing, completing or aborting a test changes only the software record. Nothing connects, disconnects or
-          switches the battery or the load resistor, and there is no automatic voltage cutoff or battery protection.{" "}
-          <span className="font-semibold text-ink">Whenever a test stops or pauses, physically disconnect the discharge load.</span>
+          Starting, stopping or the 300-second timer ending changes only the software record. Nothing connects, disconnects
+          or switches the battery or the load resistor, and there is no automatic voltage cutoff or battery protection.{" "}
+          <span className="font-semibold text-ink">When a test ends, physically disconnect the discharge load.</span>
         </p>
       </div>
     </div>
@@ -90,158 +90,203 @@ function ChecklistForm({ t, onSaved }: { t: BatteryTest; onSaved: () => void }) 
   );
 }
 
-function Controls({ t, onDone }: { t: BatteryTest; onDone: (warning?: string) => void }) {
-  const [reason, setReason] = useState("");
+const QS_TONE: Record<QuickStatus, "neutral" | "info" | "accent" | "warning" | "good" | "critical"> = {
+  not_started: "neutral", in_progress: "accent", counted: "good", incomplete: "warning", interrupted: "critical",
+  telemetry_gap: "warning", invalid: "warning",
+};
+
+function Countdown({ t, fetchedAt }: { t: BatteryTest; fetchedAt: number }) {
+  const q = t.quick_test!;
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (t.state !== "running") return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [t.state]);
+  const running = t.state === "running";
+  const elapsed = Math.min((q.elapsed_s ?? 0) + (running ? (now - fetchedAt) / 1000 : 0), q.duration_s);
+  const remaining = Math.max(q.duration_s - elapsed, 0);
+  const mmss = (x: number) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
+  return (
+    <div className="rounded-lg border border-line bg-panel-2 px-4 py-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-ink-3">
+          <TimerIcon size={13} /> Software recording window
+        </p>
+        <p className="tabular text-sm text-ink-2">
+          elapsed <span className="font-semibold text-ink">{mmss(elapsed)}</span> · remaining{" "}
+          <span className="text-2xl font-semibold text-ink">{mmss(remaining)}</span>
+        </p>
+      </div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-panel" role="progressbar" aria-valuemin={0} aria-valuemax={q.duration_s} aria-valuenow={Math.round(elapsed)}>
+        <div className="h-full bg-accent transition-all" style={{ width: `${(100 * elapsed) / q.duration_s}%` }} />
+      </div>
+      <p className="mt-2 text-xs text-ink-3">
+        At {q.duration_s / 60} minutes the software stops recording automatically. This does <span className="font-semibold text-ink">not</span>{" "}
+        disconnect the battery or stop the discharge current.
+      </p>
+    </div>
+  );
+}
+
+function DisconnectStep({ t, onDone }: { t: BatteryTest; onDone: () => void }) {
   const [err, setErr] = useState<string | null>(null);
-  const run = async (a: "start" | "pause" | "resume" | "complete" | "abort") => {
+  const [note, setNote] = useState<string | null>(null);
+  const confirm = async () => {
     setErr(null);
     try {
-      const r = await api.testAction(t.test_uid, a, a === "abort" ? reason : undefined);
-      onDone(r.warning);
+      const r = await api.confirmDisconnect(t.test_uid);
+      setNote(r.note);
+      onDone();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : String(e));
     }
   };
-  const btn = "rounded-lg border px-3 py-1.5 text-sm font-medium disabled:opacity-40";
-  const s = t.state;
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <button className={`${btn} border-accent/50 text-accent`} disabled={s !== "ready"} onClick={() => run("start")}>Start test record</button>
-        <button className={`${btn} border-warning/50 text-warning`} disabled={s !== "running"} onClick={() => run("pause")}>Pause</button>
-        <button className={`${btn} border-accent/50 text-accent`} disabled={s !== "paused"} onClick={() => run("resume")}>Resume</button>
-        <button className={`${btn} border-good/50 text-good`} disabled={s !== "running" && s !== "paused"} onClick={() => run("complete")}>Complete</button>
-        <input aria-label="Abort reason" placeholder="abort reason" value={reason} onChange={(e) => setReason(e.target.value)}
-               className="rounded-md border border-line bg-panel-2 px-2 py-1 text-sm text-ink" />
-        <button className={`${btn} border-critical/50 text-critical`} disabled={s === "completed" || s === "aborted"} onClick={() => run("abort")}>Abort</button>
-      </div>
-      <p className="text-xs text-ink-3">These buttons change the test record only. They do not switch the load.</p>
-      {err && <ErrorBox message={err} />}
+    <div role="alert" className="rounded-lg border-2 border-critical bg-critical/15 px-4 py-3">
+      <p className="flex items-center gap-2 text-base font-semibold text-ink">
+        <Unplug size={18} className="text-critical" /> Test ended — physically disconnect the battery / load now.
+      </p>
+      <p className="mt-1 text-sm text-ink-2">
+        {t.quick_test?.auto_ended ? "The 300-second recording window ended. " : "Recording has stopped. "}
+        The resistor stays connected and current keeps flowing until you remove it. The next test is blocked until you confirm.
+      </p>
+      <button onClick={confirm} className="mt-3 rounded-lg bg-critical px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90">
+        I have physically disconnected the load
+      </button>
+      {err && <div className="mt-2"><ErrorBox message={err} /></div>}
+      {note && <p className="mt-2 text-xs text-ink-2">{note}</p>}
     </div>
   );
 }
 
 function TestDetail({ uid, onChanged }: { uid: string; onChanged: () => void }) {
-  const d = usePoll(() => api.test(uid), 3000, [uid]);
-  const [warning, setWarning] = useState<string | null>(null);
-  useEffect(() => setWarning(null), [uid]);
+  const d = usePoll(() => api.test(uid), 2000, [uid]);
+  const [err, setErr] = useState<string | null>(null);
   const t = d.data;
   if (d.loading) return <Loading />;
   if (d.error) return <ErrorBox message={d.error.message} />;
   if (!t) return null;
+  const q = t.quick_test;
   const r = t.results;
   const refresh = () => {
     d.reload();
     onChanged();
   };
+  const run = async (a: "start" | "complete" | "abort") => {
+    setErr(null);
+    try {
+      await api.testAction(t.test_uid, a, a === "abort" ? "aborted by operator" : undefined);
+      refresh();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : String(e));
+    }
+  };
+  const btn = "rounded-lg border px-3 py-1.5 text-sm font-medium disabled:opacity-40";
+  const testNo = q?.number ?? null;
 
   return (
     <div className="space-y-4">
-      {warning && (
-        <div role="alert" className="rounded-lg border-2 border-critical bg-critical/15 px-4 py-3 text-base font-semibold text-ink">
-          ⚠ {warning}
-        </div>
-      )}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-line bg-panel-2 px-4 py-3">
-          <p className="text-[11px] uppercase tracking-wider text-ink-3">Test state (software record)</p>
-          <p className="mt-1 flex items-center gap-2">
+          <p className="text-[11px] uppercase tracking-wider text-ink-3">Test (software record)</p>
+          <p className="mt-1 flex flex-wrap items-center gap-2">
             <Pill tone={STATE_TONE[t.state]}>{STATE_LABEL[t.state]}</Pill>
-            <span className="text-sm text-ink">{t.test_uid}</span>
+            {q && <Pill tone={QS_TONE[q.status]}>{q.status === "counted" ? `Valid Quick Test Cycle ${testNo}/${q.target}` : q.label}</Pill>}
+            {!q && <Pill tone="neutral">Supervised test (legacy)</Pill>}
           </p>
           <p className="mt-1 text-xs text-ink-3">
-            {t.battery_id}
-            {t.device_id ? ` on ${t.device_id}` : ""} · created {fmtTime(t.created_at, true)}
+            {t.test_uid} · {t.battery_id}
             {t.started_at && ` · started ${fmtTime(t.started_at, true)}`}
             {t.ended_at && ` · ended ${fmtTime(t.ended_at, true)}`}
           </p>
         </div>
         <div className="rounded-lg border border-line bg-panel-2 px-4 py-3">
-          <p className="text-[11px] uppercase tracking-wider text-ink-3">Hardware state (measured, not controlled)</p>
+          <p className="text-[11px] uppercase tracking-wider text-ink-3">Hardware (measured, not controlled)</p>
           <p className="mt-1 text-sm text-ink">{t.hardware_state.description}</p>
           <p className="mt-1 text-xs text-ink-3">
             {t.hardware_state.battery_selected_on ? `${t.battery_id} selected on ${t.hardware_state.battery_selected_on}` : `${t.battery_id} not selected on any device`}
-            {t.hardware_state.last_reading_ts && ` · last reading ${fmtTime(t.hardware_state.last_reading_ts)}`}
           </p>
         </div>
       </div>
 
+      {q && (t.state === "running" || t.state === "paused") && <Countdown t={t} fetchedAt={d.updatedAt ?? Date.now()} />}
+      {q?.needs_disconnect_confirmation && <DisconnectStep t={t} onDone={refresh} />}
+
       {(t.state === "not_started" || t.state === "ready") && (
-        <Card title="Pre-test checklist" subtitle="Each item is a record of what a person checked. All are required before the test can start.">
+        <Card title="Pre-test checklist" subtitle="Required before the test can start">
           <ChecklistForm t={t} onSaved={refresh} />
         </Card>
       )}
 
-      <Controls t={t} onDone={(w) => { setWarning(w ?? null); refresh(); }} />
+      <div className="flex flex-wrap items-center gap-2">
+        <button className={`${btn} border-accent/50 text-accent`} disabled={t.state !== "ready"} onClick={() => run("start")}>
+          Start recording
+        </button>
+        <button className={`${btn} border-line text-ink-2`} disabled={t.state !== "running"} onClick={() => run("complete")}>
+          Stop early
+        </button>
+        <button className={`${btn} border-critical/50 text-critical`} disabled={t.state === "completed" || t.state === "aborted"} onClick={() => run("abort")}>
+          Abort
+        </button>
+        <span className="text-xs text-ink-3">Buttons change the software record only. Stopping early makes the test incomplete.</span>
+      </div>
+      {err && <ErrorBox message={err} />}
 
-      {r.available ? (
+      {r.available && (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatTile label="Delivered" value={fmt(r.delivered_mah, 1)} unit="mAh" foot={`${fmt(r.delivered_wh, 3)} Wh`} />
-            <StatTile label="Elapsed (running)" value={fmtDuration(r.elapsed_s)} foot={`load on ${fmtDuration(r.load_on_s)}`} />
-            <StatTile label="Voltage" value={`${fmt(r.initial_voltage_v, 3)} → ${fmt(r.final_voltage_v, 3)}`} unit="V" foot={`initial → final · min loaded ${fmt(r.min_loaded_voltage_v, 3)} V`} />
-            <StatTile label="Current / power" value={fmt(r.mean_current_a, 3)} unit="A" foot={`peak ${fmt(r.peak_current_a, 3)} A · mean ${fmt(r.mean_power_w, 3)} W`} />
-            <StatTile label="Temperature" value={fmt(r.max_temperature_c, 1)} unit="°C max" foot={`initial ${fmt(r.initial_temperature_c, 1)} · final ${fmt(r.final_temperature_c, 1)} °C`} />
+            <StatTile label="Discharged" value={fmt(r.delivered_mah, 1)} unit="mAh" foot={`${fmt(r.delivered_wh, 3)} Wh delivered`} />
+            <StatTile label="Voltage" value={`${fmt(r.initial_voltage_v, 3)} → ${fmt(r.final_voltage_v, 3)}`} unit="V"
+                      foot={`drop ${fmt(r.initial_voltage_v != null && r.final_voltage_v != null ? r.initial_voltage_v - r.final_voltage_v : null, 3)} V`} />
+            <StatTile label="Avg current / power" value={fmt(r.mean_current_a, 3)} unit="A" foot={`${fmt(r.mean_power_w, 3)} W average`} />
+            <StatTile label="Max temperature" value={fmt(r.max_temperature_c, 1)} unit="°C" foot={`duration ${fmtDuration(r.elapsed_s)}`} />
           </div>
-          <Card title="Data quality and validity" subtitle={t.validity.classification}>
-            <div className="mb-3 flex flex-wrap gap-2 text-xs">
-              <Pill tone={r.gaps?.length ? "warning" : "good"}>{r.gaps?.length ? `${r.gaps.length} telemetry gap(s)` : "no telemetry gaps"}</Pill>
-              <Pill tone={r.missing_measurements?.readings_with_any_missing ? "warning" : "good"}>
-                {r.missing_measurements?.readings_with_any_missing ?? 0} readings with missing values
-              </Pill>
-              {r.paused && <Pill tone="warning">paused{r.load_current_while_paused_readings ? " — load current measured while paused" : ""}</Pill>}
-              {r.battery_stayed_selected === false && <Pill tone="critical">interrupted: battery selection changed</Pill>}
-              <Pill tone={t.validity.valid_for_full_capacity ? "good" : "neutral"}>
-                {t.validity.valid_for_full_capacity ? "valid for full-capacity / cycle analysis" : "not valid for full-capacity analysis"}
-              </Pill>
-            </div>
-            <ul className="space-y-1 text-sm">
-              {t.validity.checks.map((c) => (
-                <li key={c.check} className="flex items-start gap-2">
-                  {c.ok ? <CheckCircle2 size={15} className="mt-0.5 text-good" /> : <XCircle size={15} className="mt-0.5 text-critical" />}
-                  <span className="text-ink">{c.check}</span>
-                  <span className="text-ink-3">— {c.detail}</span>
-                </li>
-              ))}
-            </ul>
-            {!!r.gaps?.length && (
+          {q && q.status !== "in_progress" && (
+            <Card title="Quick Test validity" subtitle="Only a complete 300 s window with valid telemetry counts as a Quick Test Cycle">
+              <ul className="space-y-1 text-sm">
+                {q.checks.map((c) => (
+                  <li key={c.check} className="flex items-start gap-2">
+                    {c.ok ? <CheckCircle2 size={15} className="mt-0.5 text-good" /> : <XCircle size={15} className="mt-0.5 text-critical" />}
+                    <span className="text-ink">{c.check}</span>
+                    <span className="text-ink-3">— {c.detail}</span>
+                  </li>
+                ))}
+              </ul>
               <p className="mt-2 text-xs text-ink-3">
-                Gaps: {r.gaps.map((g) => `${fmtTime(g.from)}–${fmtTime(g.to)} (${fmt(g.duration_s, 0)} s)`).join(", ")}. No current is assumed across them.
+                A Quick Test Cycle is a 5-minute measurement, not a full charge–discharge cycle; it does not change EFC or the
+                full-cycle count.
               </p>
-            )}
-            <p className="mt-2 text-xs text-ink-3">SoH / RUL: unavailable for physical batteries. </p>
-            <a href={api.testReadingsCsvUrl(t.test_uid)} download className="mt-2 inline-flex items-center gap-1 text-xs text-accent hover:underline">
-              <Download size={12} /> Download this test's readings (CSV)
-            </a>
-          </Card>
+              <a href={api.testReadingsCsvUrl(t.test_uid)} download className="mt-2 inline-flex items-center gap-1 text-xs text-accent hover:underline">
+                <Download size={12} /> Readings of this test (CSV)
+              </a>
+            </Card>
+          )}
         </>
-      ) : (
-        <p className="text-sm text-ink-3">{r.reason}</p>
       )}
     </div>
   );
 }
 
 export default function TestManager() {
-  const profiles = usePoll(() => api.compare(), 30000, []);
-  const BATS = (profiles.data?.batteries ?? []).map((b) => b.battery_id);
+  const qt = usePoll(() => api.quickTests(), 5000, []);
   const [filter, setFilter] = useState<string>("all");
+  const list = usePoll(() => api.tests(filter === "all" ? undefined : filter), 5000, [filter]);
+  const BATS = (qt.data?.batteries ?? []).map((b) => b.battery_id);
   const [picked, setNewBat] = useState<string | null>(null);
   const newBat = picked && BATS.includes(picked) ? picked : BATS[0] ?? "";
-  const [notes, setNotes] = useState("");
   const [sel, setSel] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const list = usePoll(() => api.tests(filter === "all" ? undefined : filter), 5000, [filter]);
   const tests = list.data?.tests ?? [];
-  const current = sel ?? tests.find((t) => !["completed", "aborted"].includes(t.state))?.test_uid ?? tests[0]?.test_uid ?? null;
+  const current = sel ?? tests.find((t) => !["completed", "aborted"].includes(t.state) || t.quick_test?.needs_disconnect_confirmation)?.test_uid ?? tests[0]?.test_uid ?? null;
 
   const create = async () => {
     setErr(null);
     try {
-      const r = await api.createTest(newBat, notes);
+      const r = await api.createTest(newBat);
       setSel(r.test_uid);
-      setNotes("");
       list.reload();
+      qt.reload();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : String(e));
     }
@@ -249,11 +294,39 @@ export default function TestManager() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold">Test Manager</h1>
+      <h1 className="text-xl font-semibold">Quick Tests</h1>
       <HardwareWarning />
 
-      <Card title="New test" subtitle="Creates a uniquely identified test record for one physical battery">
-        <div className="flex flex-wrap items-end gap-3">
+      <Card title="Protocol progress" subtitle="3 valid Quick Test Cycles of 300 s per battery · 9 tests in total">
+        {qt.loading ? <Loading /> : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            {(qt.data?.batteries ?? []).map((b) => (
+              <div key={b.battery_id} className="rounded-lg border border-line bg-panel-2 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-medium text-ink">{b.battery_id}</p>
+                  <Pill tone={b.complete ? "good" : "neutral"}>{b.complete ? "3 / 3 done" : `Next: Test ${b.next_test_number}/3`}</Pill>
+                </div>
+                <div className="mt-2 flex gap-2">
+                  {[0, 1, 2].map((k) => {
+                    const c = b.cycles[k];
+                    return (
+                      <div key={k} className={`flex-1 rounded-md border px-2 py-1.5 text-center text-xs ${c ? "border-good/50 bg-good/10 text-ink" : "border-line text-ink-3"}`}>
+                        Test {k + 1}/3
+                        <span className="block tabular">{c ? `${fmt(c.delivered_mah, 1)} mAh` : "—"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {Object.values(b.not_counted).some((n) => n > 0) && (
+                  <p className="mt-2 text-[11px] text-ink-3">
+                    Not counted: {Object.entries(b.not_counted).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k.replace("_", " ")}`).join(", ")}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="text-xs text-ink-3">
             Battery
             <select aria-label="New test battery" value={newBat} onChange={(e) => setNewBat(e.target.value)}
@@ -261,24 +334,24 @@ export default function TestManager() {
               {BATS.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
           </label>
-          <input aria-label="Notes" placeholder="notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)}
-                 className="rounded-md border border-line bg-panel-2 px-2 py-1.5 text-sm text-ink" />
-          <button onClick={create} disabled={!newBat} className="rounded-lg bg-accent-strong px-3 py-1.5 text-sm font-medium text-page hover:bg-accent">
-            Create test
+          <button onClick={create} disabled={!newBat} className="rounded-lg bg-accent-strong px-3 py-1.5 text-sm font-medium text-page hover:bg-accent disabled:opacity-40">
+            New 5-minute Quick Test
           </button>
         </div>
         {err && <div className="mt-2"><ErrorBox message={err} /></div>}
       </Card>
 
-      {current && (
-        <Card title="Selected test">
-          <TestDetail uid={current} onChanged={list.reload} />
+      {current ? (
+        <Card title="Current test">
+          <TestDetail uid={current} onChanged={() => { list.reload(); qt.reload(); }} />
         </Card>
+      ) : (
+        <EmptyState title="No tests yet">Select the connected battery on the Batteries page, then create a Quick Test.</EmptyState>
       )}
 
       <Card
         title="Test history"
-        subtitle="All tests are kept, including aborted ones"
+        subtitle="Every test is kept. Only valid 300 s tests count as Quick Test Cycles."
         actions={
           <div className="flex items-center gap-2">
             <Segmented label="Battery filter" value={filter} onChange={setFilter}
@@ -291,18 +364,27 @@ export default function TestManager() {
         }
       >
         {list.error && <ErrorBox message={list.error.message} />}
-        <Table empty={!tests.length} head={["Test", "Battery", "State", "Result", "Delivered", "Energy", "Elapsed", "V start → end", "Gaps", ""]}>
+        <Table empty={!tests.length} head={["Test", "Battery", "Result", "Discharged", "Delivered", "Duration", "V drop", ""]}>
           {tests.map((t) => (
             <tr key={t.test_uid} className={t.test_uid === current ? "bg-accent/5" : ""}>
               <td className="px-3 py-1.5 text-ink">{t.test_uid}</td>
               <td className="px-3 py-1.5">{t.battery_id}</td>
-              <td className="px-3 py-1.5"><Pill tone={STATE_TONE[t.state]}>{STATE_LABEL[t.state]}</Pill></td>
-              <td className="px-3 py-1.5">{t.validity.classification}</td>
+              <td className="px-3 py-1.5">
+                {t.quick_test ? (
+                  <Pill tone={QS_TONE[t.quick_test.status]}>
+                    {t.quick_test.status === "counted" ? `Valid ${t.quick_test.number}/${t.quick_test.target}` : t.quick_test.label}
+                  </Pill>
+                ) : (
+                  <span className="text-ink-3">supervised (legacy) · {t.validity.classification}</span>
+                )}
+              </td>
               <td className="px-3 py-1.5">{t.results.available ? `${fmt(t.results.delivered_mah, 1)} mAh` : "—"}</td>
               <td className="px-3 py-1.5">{t.results.available ? `${fmt(t.results.delivered_wh, 3)} Wh` : "—"}</td>
               <td className="px-3 py-1.5">{t.results.available ? fmtDuration(t.results.elapsed_s) : "—"}</td>
-              <td className="px-3 py-1.5">{t.results.available ? `${fmt(t.results.initial_voltage_v, 2)} → ${fmt(t.results.final_voltage_v, 2)}` : "—"}</td>
-              <td className="px-3 py-1.5">{t.results.available ? t.results.gaps?.length ?? 0 : "—"}</td>
+              <td className="px-3 py-1.5">
+                {t.results.available && t.results.initial_voltage_v != null && t.results.final_voltage_v != null
+                  ? `${fmt(t.results.initial_voltage_v - t.results.final_voltage_v, 3)} V` : "—"}
+              </td>
               <td className="px-3 py-1.5"><button className="text-accent hover:underline" onClick={() => setSel(t.test_uid)}>Open</button></td>
             </tr>
           ))}

@@ -253,7 +253,14 @@ def battery_summary(conn: sqlite3.Connection, b: dict, now: datetime, s: Optiona
         "last_session": session,
         "assignment": battery_assignment(conn, b["battery_id"]),
         "stats": battery_stats(conn, b, s),
+        "quick_test_cycles": _qt_summary(conn, b["battery_id"]),
     }
+
+
+def _qt_summary(conn: sqlite3.Connection, battery_id: str) -> dict:
+    from .battery_tests import quick_tests
+    q = quick_tests(conn, battery_id)
+    return {"count": q["count"], "target": q["target"], "last": q["last"]}
 
 
 def history(conn: sqlite3.Connection, battery_id: str, start: Optional[datetime], end: Optional[datetime],

@@ -4,7 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import Overview from "../pages/Overview";
 import App from "../App";
-import type { BatterySummary, DischargeSession } from "../lib/api";
+import type { BatterySummary } from "../lib/api";
 import { fmt, fmtAge } from "../lib/format";
 
 beforeAll(() => {
@@ -63,25 +63,27 @@ describe("Overview", () => {
     expect(screen.getByText("3.891")).toBeTruthy();
     expect(screen.getByText("0.372")).toBeTruthy();
     expect(screen.getByText("24.6")).toBeTruthy();
-    expect(screen.getAllByText("Measured").length).toBe(4); // V, I, T and device-reported power
+    expect(screen.getAllByText("Measured").length).toBe(5); // V, I, T, device power + live chart header
   });
 
-  it("never shows a SoH number when the prediction is unavailable, and explains why", () => {
-    render(<Overview battery={base} batteries={[base]} batteriesLoading={false} />);
-    expect(screen.getAllByText("Unavailable").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText(/outside NASA training range/).length).toBeGreaterThan(0);
-    expect(screen.queryByText("%")).toBeNull();
+  it("never shows a SoH number when no estimate exists", () => {
+    const b = { ...base, managed: 1 };
+    render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
+    expect(screen.getAllByText("Unavailable").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Not available for this battery/)).toBeTruthy();
+    expect(screen.queryByText(/%/)).toBeNull();
   });
 
   it("labels an experimental estimate", () => {
     const b = {
       ...base,
+      managed: 1,
       latest_valid_prediction: { ...base.latest_prediction!, status: "experimental" as const, soh_pct: 81.23, rul_cycles: 40.4, eol_probability: 0.1, cycle_number: 50, reasons: [] },
     };
     render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
-    expect(screen.getByText("81.2")).toBeTruthy();
-    expect(screen.getAllByText("Experimental").length).toBe(2);
-    expect(screen.getByText(/Not validated for this cell/)).toBeTruthy();
+    expect(screen.getByText("81.2 %")).toBeTruthy();
+    expect(screen.getAllByText("Experimental").length).toBe(1);
+    expect(screen.getByText(/Experimental ML Estimate — not validated for this cell/)).toBeTruthy();
   });
 
   it("marks simulated data", () => {
@@ -142,13 +144,13 @@ describe("cell presence states", () => {
       { presence_evidence: null });
     expect(screen.getByText("3.889")).toBeTruthy();
     expect(screen.getAllByText("Unverified").length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryAllByText("Measured").length).toBe(3);               // I, T, P only - not V
+    expect(screen.queryAllByText("Measured").length).toBe(4);               // I, T, P + chart header - not V
     expect(screen.getByRole("button", { name: /Confirm cell connected/ })).toBeTruthy();
   });
 
   it("an operator-confirmed cell is a measurement and can be withdrawn", () => {
     withReading({ voltage_v: 3.888, cell_state: "confirmed" }, { presence_evidence: "operator" });
-    expect(screen.getAllByText("Measured").length).toBe(4);
+    expect(screen.getAllByText("Measured").length).toBe(5);
     expect(screen.getByText(/Cell confirmed by operator/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Withdraw confirmation/ })).toBeTruthy();
   });
@@ -182,42 +184,12 @@ describe("format helpers", () => {
   });
 });
 
-const session: DischargeSession = {
-  id: 3, battery_id: "CELL-1", status: "active", start_ts: now, end_ts: null, end_reason: null,
-  charge_mah: 123.456, energy_wh: 0.4567, uncertainty_mah: 0.2, integrated_s: 1200, gap_s: 0, n_gaps: 0,
-  energy_missing_s: 0, n_readings: 600, n_on: 600, start_voltage_v: 3.85, rest_voltage_before_v: 3.95,
-  end_voltage_v: 3.62, min_voltage_v: 3.61, peak_current_a: 0.38, max_temperature_c: 26.4, last_on_ms: Date.now(),
-  duration_s: 1200, mean_current_a: 0.370, kind: "partial",
-  coverage: { started_from_full_rest_voltage: false, reached_cutoff_voltage: false, no_telemetry_gaps: true, full_charge_v: 4.15, cutoff_v: 3 },
-  rated_capacity_mah: 3000, interpretation: "Charge delivered during this session only.",
-};
-
-describe("discharge session panel", () => {
-  it("shows measured session charge and energy, distinct from capacity", () => {
-    const b = { ...base, active_session: session, last_session: session };
+describe("Quick Test progress on the Overview", () => {
+  it("shows n / 3 valid Quick Test Cycles for a battery profile", () => {
+    const b = { ...base, managed: 1, quick_test_cycles: { count: 2, target: 3, last: { delivered_mah: 31.04, completed_at: now } } } as BatterySummary;
     render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
-    expect(screen.getByText("In progress")).toBeTruthy();
-    expect(screen.getByText("123.5")).toBeTruthy();            // mAh
-    expect(screen.getByText("0.457")).toBeTruthy();            // Wh
-    expect(screen.getByText(/Discharged charge ≠ battery capacity/)).toBeTruthy();
-    expect(screen.getByText("3000 mAh")).toBeTruthy();         // label rating shown as such
-    expect(screen.getByText(/manufacturer rating, not measured/)).toBeTruthy();
-    expect(screen.queryByText(/4\.1 ?%/)).toBeNull();          // 123.5/3000 never shown as a percentage
-    // health stays unavailable: a session is not a health measurement
-    expect(screen.getAllByText("Unavailable").length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("keeps the last session after discharge stops", () => {
-    const ended = { ...session, status: "ended" as const, end_ts: now, end_reason: "load_stopped" as const };
-    const b = { ...base, active_session: null, last_session: ended };
-    render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
-    expect(screen.getByText(/Last session · load stopped/)).toBeTruthy();
-    expect(screen.getByText("123.5")).toBeTruthy();
-  });
-
-  it("explains how a session starts when none exists", () => {
-    render(<Overview battery={base} batteries={[base]} batteriesLoading={false} />);
-    expect(screen.getByText(/No discharge recorded/)).toBeTruthy();
+    expect(screen.getByText("2 / 3")).toBeTruthy();
+    expect(screen.getByText(/31\.0 mAh in 300 s/)).toBeTruthy();
   });
 });
 
@@ -225,7 +197,7 @@ describe("readiness: unselected profile", () => {
   it("shows a switched-away profile as not selected rather than offline", () => {
     const b = { ...base, managed: 1, connection: { state: "not_selected" as const, age_s: 900 }, assignment: null };
     render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
-    expect(screen.getByText(/Not selected as connected/)).toBeTruthy();
+    expect(screen.getAllByText(/not selected as connected/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Offline/)).toBeNull();
   });
 });

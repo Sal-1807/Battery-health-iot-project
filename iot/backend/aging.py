@@ -214,10 +214,16 @@ def battery_aging(conn: sqlite3.Connection, battery: dict, s: Settings) -> dict[
             "comparable": x.get("comparable", False), "comparability_issues": x.get("comparability_issues", []),
             "is_reference": ref is not None and x["id"] == ref["id"],
         } for x in sessions],
+        "quick_tests": _quick(conn, bid),
         "rul": RUL_STATUS,
         "soh": {"status": "unavailable", "reason": "Absolute SoH is not measured: there is no validated initial "
                                                    "capacity for these cells."},
     }
+
+
+def _quick(conn: sqlite3.Connection, battery_id: str) -> dict:
+    from .battery_tests import quick_tests
+    return quick_tests(conn, battery_id)
 
 
 def comparability_rules() -> dict[str, Any]:

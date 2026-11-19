@@ -1,231 +1,183 @@
-import { useMemo, useState } from "react";
-import { TrendingDown } from "lucide-react";
-import { api, type Aging as AgingT } from "../lib/api";
+import { useMemo } from "react";
+import type { PageProps } from "../App";
+import { api, type QuickMetric, type QuickOverview } from "../lib/api";
 import { usePoll } from "../lib/hooks";
-import { fmt, fmtDuration, fmtTime } from "../lib/format";
-import { CycleChart, TimeChart } from "../components/charts";
-import { Card, EmptyState, ErrorBox, Loading, Notice, Pill, Segmented, StatTile, Table } from "../components/ui";
+import { END_REASON, fmt, fmtDuration, fmtTime } from "../lib/format";
+import { CycleChart } from "../components/charts";
+import { Card, Collapsible, EmptyState, ErrorBox, Loading, Notice, Pill, StatTile, Table } from "../components/ui";
+import HistoryPage from "./History";
 
-type Bat = string;
 const S1 = "var(--color-series-1)";
 
-function Insufficient({ reason }: { reason: string | null }) {
+const METRICS: { key: QuickMetric; label: string; unit: string; digits: number }[] = [
+  { key: "mean_voltage_v", label: "Avg voltage", unit: "V", digits: 3 },
+  { key: "mean_current_a", label: "Avg current", unit: "A", digits: 3 },
+  { key: "mean_power_w", label: "Avg power", unit: "W", digits: 3 },
+  { key: "max_temperature_c", label: "Max temperature", unit: "°C", digits: 1 },
+  { key: "voltage_drop_v", label: "Voltage drop", unit: "V", digits: 3 },
+  { key: "delivered_mah", label: "Discharged", unit: "mAh", digits: 1 },
+  { key: "delivered_wh", label: "Delivered", unit: "Wh", digits: 3 },
+];
+
+/** A/B/C side by side: averages over each battery's 3 valid Quick Test Cycles. */
+export function QuickComparison({ data }: { data: QuickOverview }) {
+  const rows = data.comparison.rows;
   return (
-    <EmptyState icon={<TrendingDown size={22} />} title="Insufficient data">
-      {reason} A comparable test is a discharge from a rested full charge to the cutoff, ended by stopping the load,
-      without telemetry gaps, at a similar load current and temperature.
-    </EmptyState>
+    <Card title="Quick Test comparison" subtitle={data.comparison.note}>
+      <Table head={["Battery", "Quick Test Cycles", ...METRICS.map((m) => `${m.label} (${m.unit})`)]}>
+        {rows.map((r) => (
+          <tr key={r.battery_id}>
+            <td className="px-3 py-2 font-medium text-ink">{r.battery_id}</td>
+            <td className="px-3 py-2">
+              <Pill tone={r.count >= r.target ? "good" : "neutral"}>{`${Math.min(r.count, r.target)} / ${r.target}`}</Pill>
+            </td>
+            {METRICS.map((m) => {
+              const v = r[m.key] as number | null;
+              const diff = r[`${m.key}_diff_pct`] as number | null;
+              const range = r[`${m.key}_range`] as number | null;
+              return (
+                <td key={m.key} className="px-3 py-2">
+                  {v == null ? (
+                    <span className="text-ink-3">—</span>
+                  ) : (
+                    <>
+                      <span className="text-ink">{fmt(v, m.digits)}</span>
+                      {r.count > 1 && range != null && <span className="text-ink-3"> ±{fmt(range / 2, m.digits)}</span>}
+                      {diff != null && rows.filter((x) => x.count > 0).length > 1 && (
+                        <span className="block text-[11px] text-ink-3">{diff >= 0 ? "+" : ""}{fmt(diff, 1)} % vs avg</span>
+                      )}
+                    </>
+                  )}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </Table>
+    </Card>
   );
 }
 
-function Comparison({ rows, onPick }: { rows: AgingT[]; onPick: (b: Bat) => void }) {
+function QuickTrends({ id, data }: { id: string; data: QuickOverview }) {
+  const q = data.batteries.find((b) => b.battery_id === id);
+  const series = useMemo(
+    () => (q?.cycles ?? []).map((c) => ({ cycle: c.number, drop: c.voltage_drop_v, temp: c.max_temperature_c, mah: c.delivered_mah })),
+    [q],
+  );
+  if (!q) return null;
+  if (!q.cycles.length)
+    return (
+      <EmptyState title={`No valid Quick Test Cycles for ${id} yet`}>
+        Run the 300-second Quick Tests on the Quick Tests page. Interrupted, incomplete or gap-affected tests are listed
+        there but are not counted.
+      </EmptyState>
+    );
   return (
-    <Table
-      head={["Battery", "Rated (label)", "Sessions (partial / full)", "Throughput", "of which partial", "Energy",
-             "Discharge time", "EFC (throughput ÷ rating)", "Measured full capacity", "Retention", "RUL"]}
-    >
-      {rows.map((a) => (
-        <tr key={a.battery_id}>
-          <td className="px-3 py-2">
-            <button className="font-medium text-accent hover:underline" onClick={() => onPick(a.battery_id as Bat)}>
-              {a.battery_id}
-            </button>
-            {a.source === "simulation" && <span className="ml-2"><Pill tone="warning">SIMULATED</Pill></span>}
-          </td>
-          <td className="px-3 py-2">{fmt(a.rated_capacity_mah, 0)} mAh</td>
-          <td className="px-3 py-2">
-            {a.totals.n_sessions} ({a.throughput?.n_partial_sessions ?? 0} / {a.throughput?.n_full_tests ?? a.n_full_tests})
-          </td>
-          <td className="px-3 py-2">{fmt(a.totals.delivered_mah, 1)} mAh</td>
-          <td className="px-3 py-2">{fmt(a.throughput?.partial_mah, 1)} mAh</td>
-          <td className="px-3 py-2">{fmt(a.totals.delivered_wh, 3)} Wh</td>
-          <td className="px-3 py-2">{fmtDuration(a.totals.discharge_duration_s)}</td>
-          <td className="px-3 py-2">{fmt(a.totals.equivalent_full_cycles, 3)}</td>
-          <td className="px-3 py-2">
-            {a.reference ? (
-              <>
-                {fmt(a.reference.capacity_mah, 0)} mAh
-                <span className="text-ink-3"> @ {fmt(a.reference.c_rate, 2)} C</span>
-              </>
-            ) : (
-              <span className="text-ink-3">not measured</span>
-            )}
-          </td>
-          <td className="px-3 py-2">
-            {a.retention.status === "ok" ? `${fmt(a.retention.latest_pct, 1)} %` : <Pill tone="neutral">Insufficient data</Pill>}
-          </td>
-          <td className="px-3 py-2">
-            <Pill tone="neutral">Unavailable</Pill>
-          </td>
-        </tr>
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {[
+        { key: "drop", title: "Voltage drop per test (V)", unit: "V", digits: 3 },
+        { key: "temp", title: "Max temperature per test (°C)", unit: "°C", digits: 1 },
+        { key: "mah", title: "Discharged per test (mAh)", unit: "mAh", digits: 1 },
+      ].map((c) => (
+        <Card key={c.key} title={c.title}>
+          <CycleChart data={series} unit={c.unit} height={200} series={[{ key: c.key, label: c.title, color: S1, digits: c.digits, dots: true }]} />
+        </Card>
       ))}
-    </Table>
-  );
-}
-
-function Detail({ id }: { id: Bat }) {
-  const d = usePoll(() => api.agingDetail(id), 15000, [id]);
-  const a = d.data;
-  const capData = useMemo(
-    () => (a?.capacity_series ?? []).map((x) => ({ cycle: x.index, capacity: x.capacity_mah, retention: x.retention_pct })),
-    [a],
-  );
-  const sessData = useMemo(
-    () => (a?.sessions ?? []).filter((x) => x.counted_in_throughput !== false).map((x, i) => ({ cycle: i + 1, charge: x.charge_mah })),
-    [a],
-  );
-  const trend = useMemo(
-    () =>
-      (a?.trends ?? []).map((t) => ({
-        ts_ms: t.start_ms ?? Date.parse(t.start_ts),
-        temp: t.mean_temperature_c,
-        volt: t.mean_loaded_voltage_v,
-      })),
-    [a],
-  );
-
-  if (d.loading) return <Loading />;
-  if (d.error) return <ErrorBox message={d.error.message} />;
-  if (!a) return null;
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-ink">
-        Measured discharge throughput <span className="font-normal text-ink-3">— all sessions, partial ones included. Not the battery's capacity.</span>
-      </h3>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile
-          label="Discharge throughput"
-          value={fmt(a.totals.delivered_mah, 1)}
-          unit="mAh"
-          foot={`${a.throughput?.n_partial_sessions ?? 0} partial (${fmt(a.throughput?.partial_mah, 1)} mAh) + ${a.throughput?.n_full_tests ?? 0} full (${fmt(a.throughput?.full_mah, 1)} mAh)`}
-        />
-        <StatTile label="Energy throughput" value={fmt(a.totals.delivered_wh, 3)} unit="Wh" />
-        <StatTile label="Discharge duration" value={fmtDuration(a.totals.discharge_duration_s)} foot="total time under load" />
-        <StatTile
-          label="Equivalent full cycles"
-          value={fmt(a.totals.equivalent_full_cycles, 3)}
-          foot={`delivered ÷ ${fmt(a.rated_capacity_mah, 0)} mAh label rating`}
-        />
-      </div>
-      <Card title="Discharge-session history (mAh per session)" subtitle="Every measured session, partial and full. Partial sessions add to throughput and EFC only.">
-        {sessData.length === 0 ? (
-          <EmptyState title="No discharge sessions recorded" />
-        ) : (
-          <CycleChart data={sessData} unit="mAh" series={[{ key: "charge", label: "Session discharge", color: S1, digits: 1, dots: true }]} />
-        )}
-        {(a.throughput?.overlapping_sessions_excluded.length ?? 0) > 0 && (
-          <p className="mt-2 text-xs text-warning">
-            {a.throughput!.overlapping_sessions_excluded.length} overlapping session record(s) excluded so no charge is counted twice.
-          </p>
-        )}
-      </Card>
-
-      <h3 className="pt-2 text-sm font-semibold text-ink">
-        Measured full capacity <span className="font-normal text-ink-3">— full tests only (rested full charge → cutoff, uninterrupted, gap-free)</span>
-      </h3>
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card
-          title="Measured full capacity per comparable full test (mAh)"
-          subtitle={a.reference ? `Reference: test #1, ${fmtTime(a.reference.start_ts, true)}, ${fmt(a.reference.mean_current_a, 3)} A, ${fmt(a.reference.mean_temperature_c, 1)} °C` : undefined}
-        >
-          {a.capacity_series.length === 0 ? (
-            <Insufficient reason={a.retention.reason} />
-          ) : (
-            <CycleChart data={capData} unit="mAh" series={[{ key: "capacity", label: "Measured capacity", color: S1, digits: 1, dots: true }]} />
-          )}
-        </Card>
-        <Card title="Capacity retention vs first measured test (%)" subtitle="Relative to this battery's own reference test. Not absolute SoH.">
-          {a.retention.status !== "ok" ? (
-            <Insufficient reason={a.retention.reason} />
-          ) : (
-            <CycleChart data={capData} unit="%" series={[{ key: "retention", label: "Retention", color: S1, digits: 1, dots: true }]} />
-          )}
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card title="Mean temperature per session (°C)" subtitle="Cell temperature while under load">
-          {trend.length === 0 ? <EmptyState title="No sessions recorded" /> : (
-            <TimeChart data={trend} unit="°C" withDate series={[{ key: "temp", label: "Mean temperature", color: S1, digits: 1, dots: true }]} />
-          )}
-        </Card>
-        <Card title="Mean loaded voltage per session (V)" subtitle="Terminal voltage while the load was on">
-          {trend.length === 0 ? <EmptyState title="No sessions recorded" /> : (
-            <TimeChart data={trend} unit="V" withDate series={[{ key: "volt", label: "Mean loaded voltage", color: S1, digits: 3, dots: true }]} />
-          )}
-        </Card>
-      </div>
-
-      <Card title="Sessions and why they are (not) used" subtitle="Only full, uninterrupted, gap-free and comparable tests enter capacity and retention">
-        <Table empty={!a.sessions?.length} head={["Start", "Charge", "Duration", "Avg I", "C-rate", "Mean T", "Type", "In throughput", "Used for full capacity", "Why not"]}>
-          {(a.sessions ?? []).map((x) => (
-            <tr key={x.session_id}>
-              <td className="px-3 py-1.5">{fmtTime(x.start_ts, true)}</td>
-              <td className="px-3 py-1.5">{fmt(x.charge_mah, 1)} mAh</td>
-              <td className="px-3 py-1.5">{fmtDuration(x.duration_s)}</td>
-              <td className="px-3 py-1.5">{fmt(x.mean_current_a, 3)} A</td>
-              <td className="px-3 py-1.5">{fmt(x.c_rate, 2)} C</td>
-              <td className="px-3 py-1.5">{fmt(x.mean_temperature_c, 1)} °C</td>
-              <td className="px-3 py-1.5">{x.full_test ? "full test" : "partial"}</td>
-              <td className="px-3 py-1.5">
-                {x.counted_in_throughput === false ? <Pill tone="warning">no (overlap)</Pill> : <Pill tone="good">yes</Pill>}
-              </td>
-              <td className="px-3 py-1.5">
-                {x.comparable ? <Pill tone="good">{x.is_reference ? "yes (reference)" : "yes"}</Pill> : <Pill tone="neutral">no</Pill>}
-              </td>
-              <td className="max-w-md whitespace-normal px-3 py-1.5 text-ink-3">
-                {[...x.full_test_issues, ...x.comparability_issues].join("; ") || "—"}
-              </td>
-            </tr>
-          ))}
-        </Table>
-      </Card>
     </div>
   );
 }
 
-export default function Aging() {
-  const ov = usePoll(() => api.aging(), 15000, []);
-  const rules = ov.data?.rules;
-  const ids = (ov.data?.batteries ?? []).map((b) => b.battery_id);
-  const [picked, setBat] = useState<Bat | null>(null);
-  const bat = picked && ids.includes(picked) ? picked : ids[0];
+function Throughput({ id }: { id: string }) {
+  const d = usePoll(() => api.agingDetail(id), 15000, [id]);
+  const a = d.data;
+  if (d.loading) return <Loading />;
+  if (d.error) return <ErrorBox message={d.error.message} />;
+  if (!a) return null;
+  return (
+    <div className="space-y-4">
+      <h3 className="text-sm font-semibold text-ink">
+        Measured discharge throughput <span className="font-normal text-ink-3">— all measured sessions, including Quick Tests. Not the battery's capacity.</span>
+      </h3>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatTile label="Discharge throughput" value={fmt(a.totals.delivered_mah, 1)} unit="mAh" foot={`${a.totals.n_sessions} measured sessions`} />
+        <StatTile label="Energy throughput" value={fmt(a.totals.delivered_wh, 3)} unit="Wh" />
+        <StatTile label="Time under load" value={fmtDuration(a.totals.discharge_duration_s)} />
+        <StatTile label="Equivalent full cycles" value={fmt(a.totals.equivalent_full_cycles, 3)} foot={`throughput ÷ ${fmt(a.rated_capacity_mah, 0)} mAh rating`} />
+      </div>
+      <h3 className="pt-2 text-sm font-semibold text-ink">
+        Measured full capacity <span className="font-normal text-ink-3">— only from complete discharges (rested full charge → cutoff)</span>
+      </h3>
+      {a.retention.status !== "ok" || a.capacity_series.length === 0 ? (
+        <p className="rounded-lg border border-line bg-panel px-4 py-3 text-sm text-ink-2">
+          <span className="font-medium text-ink">Insufficient data.</span> {a.retention.reason} Quick Tests are 5-minute
+          measurements and are never used as the battery's total capacity.
+        </p>
+      ) : (
+        <Card title="Measured full capacity per comparable full test (mAh)" subtitle="Retention is relative to this battery's own first test, not absolute SoH">
+          <CycleChart
+            data={a.capacity_series.map((x) => ({ cycle: x.index, capacity: x.capacity_mah }))}
+            unit="mAh"
+            series={[{ key: "capacity", label: "Measured capacity", color: S1, digits: 1, dots: true }]}
+          />
+          <p className="mt-2 text-xs text-ink-3">Latest retention: {fmt(a.retention.latest_pct, 1)} % of the first measured full test.</p>
+        </Card>
+      )}
+      <Collapsible title={`All discharge sessions (${a.sessions?.length ?? 0})`}>
+          <Table empty={!a.sessions?.length} head={["Start", "Charge", "Duration", "Avg I", "Mean T", "Type", "Ended", "Why not a full test"]}>
+            {(a.sessions ?? []).map((x) => (
+              <tr key={x.session_id}>
+                <td className="px-3 py-1.5">{fmtTime(x.start_ts, true)}</td>
+                <td className="px-3 py-1.5">{fmt(x.charge_mah, 1)} mAh</td>
+                <td className="px-3 py-1.5">{fmtDuration(x.duration_s)}</td>
+                <td className="px-3 py-1.5">{fmt(x.mean_current_a, 3)} A</td>
+                <td className="px-3 py-1.5">{fmt(x.mean_temperature_c, 1)} °C</td>
+                <td className="px-3 py-1.5">{x.full_test ? "full test" : "partial"}</td>
+                <td className="px-3 py-1.5">{x.status === "active" ? "in progress" : END_REASON[x.end_reason ?? ""] ?? x.end_reason}</td>
+                <td className="max-w-md whitespace-normal px-3 py-1.5 text-ink-3">{[...x.full_test_issues, ...x.comparability_issues].join("; ") || "—"}</td>
+              </tr>
+            ))}
+          </Table>
+      </Collapsible>
+    </div>
+  );
+}
+
+export default function Aging({ battery, batteries = [], selectBattery }: Partial<PageProps>) {
+  const qt = usePoll(() => api.quickTests(), 10000, []);
+  const id = battery?.battery_id;
+  const isProfile = !!battery?.managed && !battery?.archived;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold">Aging analytics — physical batteries</h1>
-      <Notice tone="info" title="Measured, not predicted">
-        <p>
-          Every figure comes from measured discharge sessions of that battery only. Capacity retention compares a battery
-          with its own first comparable full test; it is not absolute SoH, and the label rating is not treated as a
-          measured initial capacity. ML RUL is unavailable for these cells until a compatible model is validated.
-        </p>
-        {rules && (
-          <p className="mt-1">
-            Comparable = {rules.full_test}; load current within ±{fmt(rules.current_tolerance_frac * 100, 0)} %, mean
-            temperature within ±{fmt(rules.temperature_tolerance_c, 0)} °C and the same cutoff as the reference; at least{" "}
-            {rules.min_trend_points} tests for retention.
-          </p>
-        )}
-      </Notice>
+      <h1 className="text-xl font-semibold">Battery Analysis</h1>
+      {qt.error && <ErrorBox message={qt.error.message} />}
+      {qt.loading ? <Loading /> : qt.data && <QuickComparison data={qt.data} />}
 
-      <Card
-        title="Comparison"
-        subtitle="EFC and C-rate are normalised by each battery's own rating (3000 vs 2500 mAh); retention by its own reference test"
-      >
-        {ov.error && <ErrorBox message={ov.error.message} />}
-        {ov.loading ? <Loading /> : <Comparison rows={ov.data?.batteries ?? []} onPick={setBat} />}
-      </Card>
-
-      {bat && (
-        <>
-          <div className="flex items-center gap-3">
-            <Segmented label="Battery" value={bat} onChange={setBat} options={ids.map((b) => ({ value: b, label: b }))} />
+      {battery && (
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold">{id}</h2>
+            {isProfile ? <Pill tone="accent">Battery profile</Pill> : <Pill tone="warning">Archived (read-only)</Pill>}
+            {selectBattery &&
+              batteries
+                .filter((b) => b.battery_id !== id)
+                .map((b) => (
+                  <button key={b.battery_id} className="text-xs text-accent hover:underline" onClick={() => selectBattery(b.battery_id)}>
+                    {b.battery_id}
+                  </button>
+                ))}
           </div>
-          <Detail id={bat} />
-        </>
+          {isProfile && qt.data && <QuickTrends id={id!} data={qt.data} />}
+          {isProfile && <Throughput id={id!} />}
+          {!isProfile && (
+            <Notice tone="info" title="Archived record">
+              Historical measurements are shown as recorded. They are not part of the three-battery Quick Test protocol.
+            </Notice>
+          )}
+          <Collapsible key={id} title="Measurement history and CSV export" defaultOpen={!isProfile}>
+            <HistoryPage battery={battery} batteries={batteries} batteriesLoading={false} />
+          </Collapsible>
+        </section>
       )}
     </div>
   );

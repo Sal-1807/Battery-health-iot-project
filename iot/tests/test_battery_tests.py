@@ -39,7 +39,7 @@ def act(client, uid, action, at, reason=None):
 def ready_test(client, battery="BAT-A-3000", at=None):
     at = at or datetime.now(timezone.utc) - timedelta(hours=2)
     assign(client, battery, at)
-    uid = client.post("/api/tests", json={"battery_id": battery, "notes": "unit"}).json()["test_uid"]
+    uid = client.post("/api/tests", json={"battery_id": battery, "notes": "unit", "kind": "supervised"}).json()["test_uid"]
     r = client.put(f"/api/tests/{uid}/checklist", json=GOOD).json()
     assert r["state"] == "ready", r
     return uid, at
@@ -136,7 +136,7 @@ def test_battery_identity_rules(client):
 
 def test_only_one_active_test_per_battery_or_device(client):
     uid1, at = ready_test(client, "BAT-A-3000")
-    uid2 = client.post("/api/tests", json={"battery_id": "BAT-A-3000"}).json()["test_uid"]
+    uid2 = client.post("/api/tests", json={"battery_id": "BAT-A-3000", "kind": "supervised"}).json()["test_uid"]
     client.put(f"/api/tests/{uid2}/checklist", json=GOOD)
     assert uid1 != uid2
     act(client, uid1, "start", at + timedelta(minutes=1))

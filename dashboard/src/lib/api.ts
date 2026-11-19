@@ -169,7 +169,8 @@ export interface CompareRow {
   last_cell_state: CellState | null;
   n_readings: number;
   stats: BatteryStats;
-  soh: "unavailable" | null;
+  quick_test_cycles?: number;
+  soh: "unavailable" | "experimental" | null;
 }
 
 export interface BatterySummary {
@@ -197,6 +198,8 @@ export interface BatterySummary {
   active_session: DischargeSession | null;
   last_session: DischargeSession | null;
   managed?: number | boolean;
+  archived?: boolean;
+  quick_test_cycles?: { count: number; target: number; last: QuickCycle | null };
   assignment?: DeviceAssignment | null;
   stats?: BatteryStats;
 }
@@ -349,26 +352,6 @@ export interface SystemStatus {
   model: Omit<ModelInfo, "lobo">;
 }
 
-export interface NasaBattery {
-  battery_id: string;
-  n_cycles: number;
-  eol_cycle: number | null;
-  initial_soh_pct: number;
-  final_soh_pct: number;
-}
-
-export interface NasaCycle {
-  Battery_ID: string;
-  Cycle: number;
-  SoH: number;
-  RUL: number | null;
-  Reached_EOL: number;
-  SoH_lobo_pred?: number | null;
-  RUL_lobo_pred?: number | null;
-  Reached_EOL_lobo_pred?: number | null;
-  [feature: string]: string | number | null | undefined;
-}
-
 export interface RegMetrics { n: number; mae: number | null; rmse: number | null }
 export interface ClfMetrics {
   n: number; accuracy: number; precision: number; recall: number; f1: number;
@@ -446,6 +429,29 @@ export interface AgingRules {
   min_trend_points: number; full_test: string;
 }
 
+export interface QuickCycle {
+  number: number; test_uid: string; completed_at: string; duration_s: number;
+  initial_voltage_v: number | null; final_voltage_v: number | null; voltage_drop_v: number | null;
+  mean_voltage_v: number | null; mean_current_a: number | null; mean_power_w: number | null;
+  max_temperature_c: number | null; temperature_rise_c: number | null; delivered_mah: number; delivered_wh: number;
+}
+export type QuickStatus = "not_started" | "in_progress" | "counted" | "incomplete" | "interrupted" | "telemetry_gap" | "invalid";
+export interface QuickBattery {
+  battery_id: string; count: number; target: number; duration_s: number; next_test_number: number | null; complete: boolean;
+  definition: string; cycles: QuickCycle[];
+  attempts: { test_uid: string; state: string; status: QuickStatus; label: string; number?: number }[];
+  summary: Record<string, { mean: number; min: number; max: number } | null>;
+  not_counted: Record<string, number>;
+}
+export type QuickMetric = "mean_voltage_v" | "mean_current_a" | "mean_power_w" | "max_temperature_c" | "voltage_drop_v" | "delivered_mah" | "delivered_wh";
+export interface QuickOverview {
+  batteries: QuickBattery[];
+  comparison: { rows: ({ battery_id: string; count: number; target: number } & Record<string, number | string | null>)[];
+                group_mean: Record<string, number | null>; note: string };
+  model_status: { validated_model: boolean; message: string };
+  protocol: { duration_s: number; target_per_battery: number };
+}
+
 export type TestState = "not_started" | "ready" | "running" | "paused" | "completed" | "aborted";
 export interface TestChecklist {
   battery_identity_confirmed: boolean; load_rating_verified: boolean; supervisor_approval: boolean;
@@ -473,6 +479,12 @@ export interface BatteryTest {
   validity: { valid_for_full_capacity: boolean; classification: string; checks: { check: string; ok: boolean; detail: string }[] };
   hardware_state: { description: string; last_reading_ts: string | null; battery_selected_on: string | null };
   hardware_notice: string; disconnect_warning: string; soh: string; rul: string;
+  kind?: "quick" | "supervised"; duration_s?: number | null;
+  quick_test?: {
+    status: QuickStatus; label: string; checks: { check: string; ok: boolean; detail: string }[];
+    number: number | null; target: number; duration_s: number; elapsed_s: number | null; remaining_s: number | null;
+    auto_ended: boolean; disconnect_confirmed_at: string | null; needs_disconnect_confirmation: boolean;
+  } | null;
 }
 
 // ------------------------------------------------------------------ calls
@@ -488,8 +500,6 @@ export const api = {
   health: () => request<Health>("/api/health"),
   system: () => request<SystemStatus>("/api/system/status"),
   batteries: () => request<{ batteries: BatterySummary[] }>("/api/batteries"),
-  updateBattery: (id: string, body: Partial<BatterySummary>) =>
-    request<BatterySummary>(`/api/battery/${enc(id)}`, { method: "PUT", body: JSON.stringify(body) }),
   history: (id: string, p: { start?: string; end?: string; limit?: number; max_points?: number }) =>
     request<HistoryResponse>(`/api/battery/${enc(id)}/history${q(p)}`),
   historyCsvUrl: (id: string, p: { start?: string; end?: string; limit?: number }) =>
@@ -511,18 +521,20 @@ export const api = {
       `/api/battery/${enc(id)}/sessions`,
     ),
   cycles: (id: string) => request<{ cycles: Cycle[] }>(`/api/battery/${enc(id)}/cycles`),
-  predictions: (id: string) => request<{ predictions: Prediction[] }>(`/api/battery/${enc(id)}/predictions`),
   alerts: (p: { battery_id?: string; status?: "active" | "resolved"; limit?: number }) =>
     request<{ alerts: Alert[] }>(`/api/alerts${q(p)}`),
   ackAlert: (id: number) => request<{ id: number }>(`/api/alerts/${id}/acknowledge`, { method: "POST" }),
   thresholds: () => request<Thresholds>("/api/settings/thresholds"),
   saveThresholds: (t: Thresholds) =>
     request<Thresholds>("/api/settings/thresholds", { method: "PUT", body: JSON.stringify(t) }),
-  models: () => request<ModelInfo>("/api/models"),
   tests: (batteryId?: string) => request<{ tests: BatteryTest[] }>(`/api/tests${q({ battery_id: batteryId })}`),
   test: (uid: string) => request<BatteryTest>(`/api/tests/${enc(uid)}`),
   createTest: (batteryId: string, notes?: string) =>
-    request<{ test_uid: string }>("/api/tests", { method: "POST", body: JSON.stringify({ battery_id: batteryId, notes: notes || null }) }),
+    request<{ test_uid: string }>("/api/tests", { method: "POST", body: JSON.stringify({ battery_id: batteryId, notes: notes || null, kind: "quick" }) }),
+  confirmDisconnect: (uid: string) =>
+    request<{ note: string }>(`/api/tests/${enc(uid)}/confirm-disconnect`, { method: "POST" }),
+  quickTests: (batteryId?: string) => request<QuickOverview>(`/api/quick-tests${q({ battery_id: batteryId })}`),
+  quickFeaturesCsvUrl: () => apiUrl("/api/quick-tests/features.csv"),
   saveChecklist: (uid: string, c: Partial<TestChecklist>) =>
     request<{ state: TestState; checklist_problems: string[] }>(`/api/tests/${enc(uid)}/checklist`, { method: "PUT", body: JSON.stringify(c) }),
   testAction: (uid: string, action: "start" | "pause" | "resume" | "complete" | "abort", reason?: string) =>
@@ -534,8 +546,14 @@ export const api = {
   aging: () => request<{ batteries: Aging[]; rules: AgingRules }>("/api/aging"),
   agingDetail: (id: string) => request<Aging & { rules: AgingRules }>(`/api/aging/${enc(id)}`),
   mlValidation: () => request<MlSummary>("/api/ml-validation"),
+  mlDemo: (cell: string, cycle: number) =>
+    request<{
+      cell: string; cycle: number; source: string; features: Record<string, number>;
+      actual: { soh_pct: number; rul_cycles: number | null; reached_eol: number };
+      saved_model: { status: string; soh_pct: number | null; rul_cycles: number | null; eol_probability: number | null; model_version: string | null; note: string };
+      held_out: { soh_pct: number; rul_cycles: number; trained_on: string[]; note: string };
+      disclaimer: string;
+    }>(`/api/ml-validation/${enc(cell)}/demo${q({ cycle })}`),
   mlValidationCell: (cell: string) =>
     request<{ cell: string; fold: MlFold; cycles: MlCycle[]; disclaimer: string }>(`/api/ml-validation/${enc(cell)}`),
-  nasaBatteries: () => request<{ batteries: NasaBattery[] }>("/api/nasa/batteries"),
-  nasaCycles: (id: string) => request<{ cycles: NasaCycle[] }>(`/api/nasa/${enc(id)}/cycles`),
 };

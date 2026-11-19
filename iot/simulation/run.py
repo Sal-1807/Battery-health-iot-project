@@ -109,7 +109,8 @@ class Runner:
             return switch_assignment(conn, DEVICE_ID, battery, "simulation", self.settings, now_ms=_ms(at))
 
     def new_test(self, battery: str, at: datetime, load_ohm: float, rating_w: float) -> str:
-        uid = self.c.post("/api/tests", json={"battery_id": battery, "notes": "SIMULATION"}).json()["test_uid"]
+        uid = self.c.post("/api/tests", json={"battery_id": battery, "notes": "SIMULATION",
+                                              "kind": "supervised"}).json()["test_uid"]
         r = self.c.put(f"/api/tests/{uid}/checklist",
                        json={**CHECKLIST, "load_resistance_ohm": load_ohm, "load_power_rating_w": rating_w}).json()
         assert r["state"] == "ready", r
@@ -406,6 +407,7 @@ class Runner:
             "/api/batteries/compare": get("/api/batteries/compare"),
             "/api/devices": get("/api/devices"),
             "/api/aging": get("/api/aging"),
+            "/api/quick-tests": get("/api/quick-tests"),
             **{f"/api/aging/{b}": get(f"/api/aging/{b}") for b in (A, B, C)},
             "/api/tests": tests,
             **{f"/api/tests/{t['test_uid']}": t for t in tests["tests"]},

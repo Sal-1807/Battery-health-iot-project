@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { BatteryWarning, Cpu, PlugZap } from "lucide-react";
+import { Cpu, PlugZap } from "lucide-react";
 import type { PageProps } from "../App";
-import { api, ApiError, VALID_CELL_STATES, type BatterySummary, type Prediction, type Reading } from "../lib/api";
-import { ageSeconds, fmt, fmtAge, fmtTime, FLAG_LABEL, SOURCE_LABEL, TIMESTAMP_LABEL } from "../lib/format";
-import { SessionPanel } from "../components/session";
-import { Card, ConnectionPill, EmptyState, Loading, Pill, PredictionPill, Provenance, SourceBadge, StatTile } from "../components/ui";
+import { api, ApiError, VALID_CELL_STATES, type BatterySummary, type Reading } from "../lib/api";
+import { usePoll } from "../lib/hooks";
+import Live from "./Live";
+import { ageSeconds, ALERT_LABEL, CELL_STATE_LABEL, fmt, fmtAge, fmtTime, FLAG_LABEL, TIMESTAMP_LABEL } from "../lib/format";
+import { Card, ConnectionPill, EmptyState, Loading, Pill, PredictionPill, Provenance, SeverityPill, SourceBadge, StatTile } from "../components/ui";
 
 function measuredKind(b: BatterySummary) {
   return b.source === "hardware" ? "measured" : "simulated";
@@ -123,48 +124,32 @@ function CellPresencePanel({ b, r }: { b: BatterySummary; r: Reading }) {
   );
 }
 
-function HealthTiles({ b }: { b: BatterySummary }) {
-  const valid: Prediction | null = b.latest_valid_prediction;
-  const latest: Prediction | null = b.latest_prediction;
-  const unavailableReason =
-    latest && latest.status === "unavailable" ? latest.reasons[0] : !latest ? "No complete discharge cycle has been aggregated yet." : null;
-
-  const sohFoot = valid ? (
-    <>
-      Cycle {valid.cycle_number ?? "?"} · {fmtAge(ageSeconds(valid.created_at))}
-      {valid.status === "experimental" && <span className="block text-warning">Not validated for this cell.</span>}
-      {valid.status === "nasa_in_sample" && <span className="block">In-sample (model trained on this cell).</span>}
-    </>
-  ) : (
-    <span>{unavailableReason}</span>
-  );
-
+function ActiveAlerts({ id }: { id: string }) {
+  const al = usePoll(() => api.alerts({ battery_id: id, status: "active", limit: 20 }), 5000, [id]);
+  const list = al.data?.alerts ?? [];
+  if (!list.length) return null;
   return (
-    <>
-      <StatTile
-        label="State of health"
-        value={valid?.soh_pct != null ? valid.soh_pct.toFixed(1) : "—"}
-        unit={valid ? "%" : undefined}
-        muted={!valid}
-        tag={<PredictionPill status={valid?.status} />}
-        foot={sohFoot}
-      />
-      <StatTile
-        label="Remaining useful life"
-        value={valid?.rul_cycles != null ? Math.round(valid.rul_cycles) : "—"}
-        unit={valid ? "cycles" : undefined}
-        muted={!valid}
-        tag={<PredictionPill status={valid?.status} />}
-        foot={
-          valid ? (
-            <>EOL probability {fmt((valid.eol_probability ?? 0) * 100, 0, "%")} · to NASA 70 % threshold</>
-          ) : (
-            "Needs a complete cycle inside the model's training range."
-          )
-        }
-      />
-    </>
+    <Card title="Active alerts" subtitle="Monitoring signals only: they do not disconnect anything">
+      <ul className="space-y-2">
+        {list.map((a) => (
+          <li key={a.id} className="flex flex-wrap items-start gap-2 text-sm">
+            <SeverityPill severity={a.severity} />
+            <span className="text-ink">{ALERT_LABEL[a.type] ?? a.type}</span>
+            <span className="min-w-0 flex-1 text-ink-3">{a.message}</span>
+            {!a.acknowledged && (
+              <button className="text-xs text-accent hover:underline" onClick={() => api.ackAlert(a.id).then(al.reload)}>
+                Acknowledge
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
+}
+
+function sensorTone(st: string | null | undefined) {
+  return st === "ok" ? "good" : st ? "critical" : "neutral";
 }
 
 export default function Overview({ battery: b, batteriesLoading }: PageProps) {
@@ -173,10 +158,8 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
     return (
       <Card title="No batteries registered yet">
         <EmptyState icon={<Cpu size={22} />} title="Waiting for the first reading">
-          A battery appears here as soon as the ESP32 (or the simulator) posts its first reading to{" "}
-          <code className="font-mono">POST /api/battery/reading</code>. For a demo without hardware, run{" "}
-          <code className="font-mono">python -m iot.simulator.simulate_esp32 telemetry</code> or{" "}
-          <code className="font-mono">nasa-replay</code>.
+          Select the connected battery on the Batteries page and start the ESP32 bridge. Readings appear here as soon as
+          they arrive.
         </EmptyState>
       </Card>
     );
@@ -214,22 +197,19 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
           ) : (
             <span className="text-warning">not selected as connected: new readings are not recorded to this battery</span>
           )}
-          {b.stats && (
-            <>
-              {" "}· EFC {fmt(b.stats.equivalent_full_cycles, 3)} · completed cycles {b.stats.completed_cycles}
-            </>
-          )}
         </p>
       ) : null}
 
       {b.source === "nasa_replay" ? (
         <Card title="Telemetry" subtitle="Cycle-level NASA replay — no instantaneous sensor readings for this battery.">
           <p className="text-sm text-ink-2">
-            {b.n_cycles} cycles replayed. See <a className="text-accent underline" href="#/health">Battery health</a> for SoH and RUL trends.
+            {b.n_cycles} cycles replayed. See <a className="text-accent underline" href="#/ml">Battery Health Predictions</a>.
           </p>
         </Card>
       ) : !r ? (
-        <EmptyState title="No readings yet" />
+        <EmptyState title="No readings for this battery yet">
+          Select it as the connected battery on the Batteries page, then start the ESP32 / USB bridge.
+        </EmptyState>
       ) : (
         <>
           <div className={`grid grid-cols-2 gap-3 lg:grid-cols-4 ${stale ? "opacity-70" : ""}`}>
@@ -260,6 +240,13 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
             />
           </div>
           {b.source === "hardware" && <CellPresencePanel b={b} r={r} />}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Pill tone={sensorTone(r.ina219_status)}>INA219 {r.ina219_status ?? "unknown"}</Pill>
+            <Pill tone={sensorTone(r.ds18b20_status)}>DS18B20 {r.ds18b20_status ?? "unknown"}</Pill>
+            <Pill tone={r.cell_state && VALID_CELL_STATES.includes(r.cell_state) ? "good" : "neutral"}>
+              Cell: {CELL_STATE_LABEL[r.cell_state ?? ""] ?? "unknown"}
+            </Pill>
+          </div>
           <p className="text-xs text-ink-3">
             Last reading {fmtTime(r.ts, true)} ({fmtAge(age)}) · time from {TIMESTAMP_LABEL[r.timestamp_source] ?? r.timestamp_source}
             {r.transport === "usb_serial" ? " · via USB" : r.transport === "wifi" ? " · via Wi-Fi" : ""} ·
@@ -269,44 +256,33 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
         </>
       )}
 
-      {b.source !== "nasa_replay" && <SessionPanel b={b} />}
+      {b.managed ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <StatTile
+            label="Quick Test Cycles"
+            value={`${b.quick_test_cycles?.count ?? 0} / ${b.quick_test_cycles?.target ?? 3}`}
+            foot={
+              b.quick_test_cycles?.last
+                ? `Last: ${fmt(b.quick_test_cycles.last.delivered_mah, 1)} mAh in 300 s, ${fmtTime(b.quick_test_cycles.last.completed_at, true)}`
+                : "No valid 300 s Quick Test yet — see Quick Tests"
+            }
+          />
+          <StatTile
+            label="SoH / RUL"
+            value={b.latest_valid_prediction?.status === "experimental" ? `${fmt(b.latest_valid_prediction.soh_pct, 1)} %` : "—"}
+            muted={b.latest_valid_prediction?.status !== "experimental"}
+            tag={<PredictionPill status={b.latest_valid_prediction?.status} />}
+            foot={
+              b.latest_valid_prediction?.status === "experimental"
+                ? "Experimental ML Estimate — not validated for this cell"
+                : "Not available for this battery — see Battery Health Predictions"
+            }
+          />
+        </div>
+      ) : null}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <HealthTiles b={b} />
-        <Card title="Cycles" className="lg:col-span-2">
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            <dt className="text-ink-3">Discharge segments detected</dt>
-            <dd className="tabular text-right">{b.n_cycles}</dd>
-            <dt className="text-ink-3">Complete cycles</dt>
-            <dd className="tabular text-right">{b.n_complete_cycles}</dd>
-            <dt className="text-ink-3">Rated capacity</dt>
-            <dd className="tabular text-right">{b.rated_capacity_ah != null ? `${b.rated_capacity_ah} Ah` : "not set"}</dd>
-            <dt className="text-ink-3">Prior cycle count</dt>
-            <dd className="tabular text-right">{b.source === "nasa_replay" ? "from dataset" : b.cycle_count_offset ?? "unknown"}</dd>
-            <dt className="text-ink-3">Readings stored</dt>
-            <dd className="tabular text-right">{b.n_readings.toLocaleString()}</dd>
-            <dt className="text-ink-3">Data origin</dt>
-            <dd className="text-right">{SOURCE_LABEL[b.source]}</dd>
-          </dl>
-        </Card>
-      </div>
-
-      {b.latest_prediction?.status === "unavailable" && b.latest_prediction.reasons.length > 0 && (
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <BatteryWarning size={16} className="text-ink-3" /> Why no health estimate
-            </span>
-          }
-          subtitle="The model is only run when its inputs are trustworthy. Latest decision:"
-        >
-          <ul className="list-disc space-y-1 pl-5 text-sm text-ink-2">
-            {b.latest_prediction.reasons.map((x, i) => (
-              <li key={i}>{x}</li>
-            ))}
-          </ul>
-        </Card>
-      )}
+      {b.source !== "nasa_replay" && r && <Live battery={b} batteries={[b]} batteriesLoading={false} />}
+      <ActiveAlerts id={b.battery_id} />
     </div>
   );
 }

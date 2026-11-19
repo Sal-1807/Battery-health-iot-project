@@ -81,6 +81,100 @@ function FoldPanel({ fold }: { fold: MlFold }) {
   );
 }
 
+/** SoH / RUL status for the three physical batteries. Only gate-passing cycles produce a value, labelled experimental. */
+function PhysicalPredictions() {
+  const b = usePoll(() => api.batteries(), 15000, []);
+  const rows = (b.data?.batteries ?? []).filter((x) => !x.archived);
+  return (
+    <Card
+      title="Physical batteries"
+      subtitle="The saved NASA models need a complete discharge cycle whose features lie inside the NASA training range"
+    >
+      {b.loading ? <Loading /> : (
+        <Table head={["Battery", "Predicted SoH", "Predicted RUL", "Status", "Reason"]}>
+          {rows.map((x) => {
+            const v = x.latest_valid_prediction;
+            const exp = v?.status === "experimental";
+            const reason = exp
+              ? "Model inputs inside the NASA training range; not independently validated for this cell"
+              : x.latest_prediction?.reasons?.[0] ??
+                "No complete discharge cycle recorded. 300 s Quick Tests are not complete discharge records, so the cycle-level models cannot be applied.";
+            return (
+              <tr key={x.battery_id}>
+                <td className="px-3 py-2 font-medium text-ink">{x.battery_id}</td>
+                <td className="px-3 py-2">{exp ? `${fmt(v!.soh_pct, 1)} %` : "—"}</td>
+                <td className="px-3 py-2">{exp ? `${fmt(v!.rul_cycles, 0)} cycles` : "—"}</td>
+                <td className="px-3 py-2">
+                  {exp ? <Pill tone="warning">Experimental ML Estimate</Pill> : <Pill tone="neutral">Not available</Pill>}
+                </td>
+                <td className="max-w-lg whitespace-normal px-3 py-2 text-xs text-ink-3">{reason}</td>
+              </tr>
+            );
+          })}
+        </Table>
+      )}
+      <p className="mt-3 text-xs text-ink-3">
+        Quick-test measurements can be exported for experimental analysis:{" "}
+        <a className="text-accent underline" href={api.quickFeaturesCsvUrl()} download>
+          quick_test_features.csv
+        </a>
+        . No validated capacity, SoH or RUL model exists for them.
+      </p>
+    </Card>
+  );
+}
+
+/** Saved models applied to a real NASA dataset cycle (never to BAT-A/B/C). */
+function ModelDemo() {
+  const [cell, setCell] = useState<Cell>("B0006");
+  const [cycle, setCycle] = useState(50);
+  const max = cell === "B0018" ? 132 : 168;
+  const c = Math.min(cycle, max);
+  const d = usePoll(() => api.mlDemo(cell, c), 0, [cell, c]);
+  const x = d.data;
+  return (
+    <Card
+      title="Model demonstration — NASA dataset example"
+      subtitle="Choose a recorded NASA cycle: the saved models run on its real features. These values describe the NASA cell, not our batteries."
+      actions={
+        <Segmented label="Demo cell" value={cell} onChange={setCell}
+                   options={[{ value: "B0005", label: "B0005" }, { value: "B0006", label: "B0006" }, { value: "B0018", label: "B0018" }]} />
+      }
+    >
+      <label className="flex items-center gap-3 text-xs text-ink-3">
+        Cycle {c}
+        <input aria-label="Demo cycle" type="range" min={1} max={max} value={c} onChange={(e) => setCycle(Number(e.target.value))} className="w-64" />
+      </label>
+      {d.error && <ErrorBox message={d.error.message} />}
+      {x && (
+        <div className="mt-3">
+          <Table head={["", "SoH (%)", "RUL (cycles)", "Note"]}>
+            <tr>
+              <td className="px-3 py-2 text-ink">Measured (dataset)</td>
+              <td className="px-3 py-2">{fmt(x.actual.soh_pct, 1)}</td>
+              <td className="px-3 py-2">{fmt(x.actual.rul_cycles, 0)}</td>
+              <td className="px-3 py-2 text-ink-3">ground truth from capacity</td>
+            </tr>
+            <tr>
+              <td className="px-3 py-2 text-ink">Saved model</td>
+              <td className="px-3 py-2">{fmt(x.saved_model.soh_pct, 1)}</td>
+              <td className="px-3 py-2">{fmt(x.saved_model.rul_cycles, 0)}</td>
+              <td className="px-3 py-2 text-ink-3">{x.saved_model.note}</td>
+            </tr>
+            <tr>
+              <td className="px-3 py-2 text-ink">Held-out model</td>
+              <td className="px-3 py-2">{fmt(x.held_out.soh_pct, 1)}</td>
+              <td className="px-3 py-2">{fmt(x.held_out.rul_cycles, 0)}</td>
+              <td className="px-3 py-2 text-ink-3">trained on {x.held_out.trained_on.join(" + ")} only — the honest accuracy reference</td>
+            </tr>
+          </Table>
+          <p className="mt-2 text-xs text-ink-3">Source: {x.source}.</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function MLValidation() {
   const [cell, setCell] = useState<Cell>("B0005");
   const sum = usePoll(() => api.mlValidation(), 0, []);
@@ -104,10 +198,15 @@ export default function MLValidation() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="flex items-center gap-2 text-xl font-semibold">
-          <FlaskConical size={18} className="text-ink-3" /> NASA ML validation demo
-        </h1>
+      <h1 className="flex items-center gap-2 text-xl font-semibold">
+        <FlaskConical size={18} className="text-ink-3" /> Battery Health Predictions
+      </h1>
+
+      <PhysicalPredictions />
+      <ModelDemo />
+
+      <div className="flex flex-wrap items-center gap-3 pt-2">
+        <h2 className="text-base font-semibold">Model validation on the NASA dataset</h2>
         <Pill tone="info">NASA dataset · not live hardware</Pill>
       </div>
 
