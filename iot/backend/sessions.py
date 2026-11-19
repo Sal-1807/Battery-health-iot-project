@@ -206,10 +206,13 @@ def session_out(row: Optional[sqlite3.Row | dict], s: Settings, cutoff_v: Option
         "started_from_full_rest_voltage": started_full,
         "reached_cutoff_voltage": reached_cutoff,
         "no_telemetry_gaps": d["n_gaps"] == 0,
+        "ended_by_load_stop": d["end_reason"] == "load_stopped",
         "full_charge_v": s.full_charge_v,
         "cutoff_v": cutoff,
     }
-    full_range = d["status"] == "ended" and started_full and reached_cutoff and d["n_gaps"] == 0
+    # interrupted sessions (battery switched, telemetry lost/gap) never count as full range
+    full_range = (d["status"] == "ended" and d["end_reason"] == "load_stopped" and started_full and reached_cutoff
+                  and d["n_gaps"] == 0)
     d["kind"] = "full_range_unvalidated" if full_range else "partial"
     d["rated_capacity_mah"] = rated_capacity_ah * 1000 if rated_capacity_ah else None
     d["interpretation"] = (

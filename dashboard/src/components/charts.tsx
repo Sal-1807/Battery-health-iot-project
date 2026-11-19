@@ -126,14 +126,14 @@ export function TimeChart({
             {series.map((s) => (
               <Line
                 key={s.key}
-                type="monotone"
+                type={s.dots ? "linear" : "monotone"}
                 dataKey={s.key}
                 stroke={s.color}
                 strokeWidth={2}
-                dot={false}
+                dot={s.dots ? { r: 3, fill: s.color, stroke: "none" } : false}
                 activeDot={{ r: 4, stroke: "var(--color-panel)", strokeWidth: 2 }}
                 isAnimationActive={false}
-                connectNulls={false}
+                connectNulls={!!s.dots}
               />
             ))}
           </LineChart>

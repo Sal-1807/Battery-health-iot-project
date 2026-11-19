@@ -167,3 +167,15 @@ Dashboard page **ML validation** (API `/api/ml-validation`) shows leave-one-cell
 - **B0018:** the EOL classifier never fires (recall 0).
 
 Three cells cannot support a robust accuracy claim. The predictions are not validated for the project's 2500 mAh or 3000 mAh cells.
+
+## 13. Aging analytics — added 2026-11-19
+
+The **Aging analytics** page covers BAT-A, BAT-B and BAT-C:
+
+- **Totals:** delivered mAh and Wh, discharge time, and EFC normalised by each battery's own rating.
+- **Capacity:** measured capacity across comparable full tests.
+- **Retention:** relative to the battery's first measured test. It is not SoH, and the label is not treated as an initial capacity.
+- **Trends:** per-session mean temperature and mean loaded voltage.
+- **Comparison table:** across the three batteries, including C-rate.
+- **Exclusions:** each excluded session is listed with its reason.
+- **Without data:** the page shows "Insufficient data" until at least two comparable full tests exist. No such tests have been recorded on real hardware yet.

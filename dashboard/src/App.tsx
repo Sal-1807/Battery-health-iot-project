@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Bell, BatteryCharging, FlaskConical, Gauge, History, Layers, Server, Zap } from "lucide-react";
+import { Activity, Bell, BatteryCharging, FlaskConical, Gauge, History, Layers, Server, TrendingDown, Zap } from "lucide-react";
 import { api, type BatterySummary } from "./lib/api";
 import { useLocalStorage, usePoll } from "./lib/hooks";
 import { SOURCE_LABEL } from "./lib/format";
@@ -12,10 +12,12 @@ import Alerts from "./pages/Alerts";
 import SystemPage from "./pages/System";
 import Batteries from "./pages/Batteries";
 import MLValidation from "./pages/MLValidation";
+import Aging from "./pages/Aging";
 
 const PAGES = [
   { id: "overview", label: "Overview", icon: Gauge },
   { id: "batteries", label: "Batteries", icon: Layers },
+  { id: "aging", label: "Aging analytics", icon: TrendingDown },
   { id: "live", label: "Live", icon: Activity },
   { id: "health", label: "Battery health", icon: BatteryCharging },
   { id: "history", label: "History", icon: History },
@@ -116,7 +118,7 @@ export default function App() {
         </nav>
       </header>
 
-      {battery && battery.source !== "hardware" && page !== "ml" && (
+      {battery && battery.source !== "hardware" && page !== "ml" && page !== "aging" && (
         <div className="border-b border-warning/30 bg-warning/10">
           <p className="mx-auto max-w-7xl px-4 py-2 text-xs text-warning sm:px-6">
             {battery.source === "simulation"
@@ -141,6 +143,7 @@ export default function App() {
         {page === "alerts" && <Alerts {...props} />}
         {page === "system" && <SystemPage />}
         {page === "ml" && <MLValidation />}
+        {page === "aging" && <Aging />}
         {page === "batteries" && (
           <Batteries
             selectBattery={(id, p) => {

@@ -402,6 +402,39 @@ export interface MlCycle {
   RUL_reg_pred: number; RUL_baseline: number | null; Reached_EOL: number; EOL_pred: number; EOL_prob: number;
 }
 
+export interface AgingSession {
+  session_id: number; start_ts: string; end_ts: string | null; status: string; end_reason: string | null;
+  charge_mah: number; energy_wh: number; duration_s: number; mean_current_a: number | null; c_rate: number | null;
+  mean_temperature_c: number | null; mean_loaded_voltage_v: number | null;
+  full_test: boolean; full_test_issues: string[]; comparable: boolean; comparability_issues: string[]; is_reference: boolean;
+}
+export interface Aging {
+  battery_id: string;
+  label: string | null;
+  rated_capacity_mah: number | null;
+  rated_note: string;
+  totals: { n_sessions: number; delivered_mah: number; delivered_wh: number; discharge_duration_s: number;
+            equivalent_full_cycles: number | null };
+  n_full_tests: number;
+  n_comparable_tests: number;
+  reference: { session_id: number; start_ts: string; capacity_mah: number; mean_current_a: number | null;
+               c_rate: number | null; mean_temperature_c: number | null; cutoff_v: number } | null;
+  retention: { status: "ok" | "insufficient_data"; reason: string | null; latest_pct: number | null; definition: string };
+  capacity_series: { index: number; session_id: number; start_ts: string; capacity_mah: number; uncertainty_mah: number;
+                     energy_wh: number; mean_current_a: number | null; mean_temperature_c: number | null;
+                     retention_pct: number | null }[];
+  trends?: { session_id: number; start_ts: string; start_ms: number | null; mean_temperature_c: number | null;
+             max_temperature_c: number | null; mean_loaded_voltage_v: number | null; min_voltage_v: number | null;
+             kind: "comparable_full" | "full" | "partial" }[];
+  sessions?: AgingSession[];
+  rul: { status: string; reason: string };
+  soh: { status: string; reason: string };
+}
+export interface AgingRules {
+  current_tolerance_frac: number; temperature_tolerance_c: number; max_uncertainty_frac: number;
+  min_trend_points: number; full_test: string;
+}
+
 // ------------------------------------------------------------------ calls
 const q = (params: Record<string, string | number | undefined | null>) => {
   const s = new URLSearchParams();
@@ -446,6 +479,8 @@ export const api = {
   saveThresholds: (t: Thresholds) =>
     request<Thresholds>("/api/settings/thresholds", { method: "PUT", body: JSON.stringify(t) }),
   models: () => request<ModelInfo>("/api/models"),
+  aging: () => request<{ batteries: Aging[]; rules: AgingRules }>("/api/aging"),
+  agingDetail: (id: string) => request<Aging & { rules: AgingRules }>(`/api/aging/${enc(id)}`),
   mlValidation: () => request<MlSummary>("/api/ml-validation"),
   mlValidationCell: (cell: string) =>
     request<{ cell: string; fold: MlFold; cycles: MlCycle[]; disclaimer: string }>(`/api/ml-validation/${enc(cell)}`),

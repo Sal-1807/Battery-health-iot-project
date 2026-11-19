@@ -23,7 +23,7 @@ from .config import Settings, get_settings
 from .cycles import aggregate_live_cycles, insert_cycle_features, store_prediction
 from .db import Database, row_to_dict
 from .model_service import ModelService
-from . import ml_validation
+from . import aging, ml_validation
 from .nasa import NasaData
 from .sessions import SESSION_COLS, battery_stats, session_out
 from .assignments import active_assignment, battery_assignment, switch_assignment
@@ -382,6 +382,27 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.get("/api/models", tags=["models"])
     def model_info():
         return {**models.info(), "lobo": nasa.metrics()}
+
+    # ------------------------------------------------------------ aging analytics (physical batteries)
+    @app.get("/api/aging", tags=["aging"])
+    def aging_overview():
+        """Measured aging analytics for the physical battery profiles, side by side."""
+        refresh_offline(db, s)
+        with db.read() as conn:
+            rows = [dict(r) for r in conn.execute("SELECT * FROM batteries WHERE managed=1 ORDER BY battery_id")]
+            out = [aging.battery_aging(conn, b, s) for b in rows]
+        for a in out:            # overview keeps payload small; detail endpoint has everything
+            a.pop("sessions"), a.pop("trends")
+        return {"batteries": out, "rules": aging.comparability_rules()}
+
+    @app.get("/api/aging/{battery_id}", tags=["aging"])
+    def aging_detail(battery_id: str):
+        refresh_offline(db, s)
+        with db.read() as conn:
+            b = _battery(conn, battery_id)
+            if not b.get("managed"):
+                raise HTTPException(400, f"'{battery_id}' is not a physical battery profile")
+            return {**aging.battery_aging(conn, b, s), "rules": aging.comparability_rules()}
 
     # ------------------------------------------------------------ NASA ML validation demo
     @app.get("/api/ml-validation", tags=["ml-validation"])

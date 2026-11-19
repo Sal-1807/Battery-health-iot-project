@@ -230,3 +230,24 @@ How the evaluation models are built:
 - They are trained in memory on the two *other* cells, with the team's own `src/train_models.py` functions.
 - The production `models/*.pkl` were trained on all three cells, so they are never used for these metrics.
 - Baselines: SoH uses a line fit of SoH against cycle on the training cells. RUL uses the training cells' mean EOL cycle minus the current cycle.
+
+## Aging analytics (physical battery profiles)
+
+| Route | Description |
+|---|---|
+| `GET /api/aging` | Per profile (BAT-A, B and C): delivered mAh, Wh and discharge time, EFC, numbers of full and comparable tests, reference test, retention status, plus the comparability rules |
+| `GET /api/aging/{battery_id}` | The same plus the capacity series, per-session temperature and loaded-voltage trends, and each session's eligibility with reasons. 400 for non-profile batteries. |
+
+**What counts as a full test.** A full test must:
+
+- start from a rested full charge (≥ 4.15 V);
+- reach the cutoff voltage;
+- end because the load stopped;
+- have no telemetry gaps;
+- have on/off transition uncertainty ≤ 2 % of its charge.
+
+**What counts as comparable.** Mean current within ±15 % and mean temperature within ±5 °C of the reference test, with the same cutoff voltage.
+
+**Retention** is each test's measured capacity divided by the battery's **first comparable measured test**. It requires at least 2 comparable tests; otherwise the status is `insufficient_data`. It is not absolute SoH, and the label rating is never used as the reference. SoH and RUL are always `unavailable`.
+
+**Behaviour change.** Sessions that reach the cutoff but end because the battery was switched or telemetry was lost are no longer classified as full range, and so no longer count as completed cycles.
