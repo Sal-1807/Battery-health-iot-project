@@ -179,3 +179,26 @@ describe("ML validation page", () => {
     expect(screen.getByText("never")).toBeTruthy();
   });
 });
+
+describe("Sample Demonstration Result", () => {
+  it("shows the fixed sample values with their label, separate from the computed demo estimate", () => {
+    mockApi([]);
+    render(<MLValidation batteries={[batA(demoEst(87.7, 193))]} />);
+    const sample = screen.getByRole("region", { name: "Sample Demonstration Result" });
+    expect(within(sample).getByText("91.6")).toBeTruthy();
+    expect(within(sample).getByText("84")).toBeTruthy();
+    expect(within(sample).getByText("remaining cycles")).toBeTruthy();
+    expect(within(sample).getByText(/not measured or predicted from this battery's data/)).toBeTruthy();
+    expect(within(sample).queryByText("87.7")).toBeNull();                 // computed estimate stays separate
+    expect(screen.getAllByText("87.7").length).toBe(2);
+  });
+
+  it("is a dashboard-only constant: no request carries or fetches it", async () => {
+    const urls: string[] = [];
+    mockApi(urls);
+    render(<MLValidation batteries={[batA(demoEst(null, null, false))]} />);
+    expect(within(screen.getByRole("region", { name: "Sample Demonstration Result" })).getByText("91.6")).toBeTruthy();
+    await waitFor(() => expect(urls.length).toBeGreaterThan(0));
+    expect(urls.every((u) => !/sample/i.test(u))).toBe(true);
+  });
+});

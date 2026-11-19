@@ -46,6 +46,13 @@ empty value to show all profiles again). BAT-B-3000 and BAT-C-2500 stay in the d
 
 Retired IDs such as `CELL-18650-01` are kept read-only under Battery Analysis → Device, alerts and records.
 
+## Sample Demonstration Result
+
+Overview and Battery Health Predictions also show a **Sample Demonstration Result** (SoH 91.6 %, RUL 84 remaining
+cycles). These are fixed illustrative values defined in `dashboard/src/lib/sample.ts`. They are not measured, not
+computed from BAT-A-3000's data and not a model output; they never reach the backend, SQLite, telemetry, Quick Test
+results or the ML predictions.
+
 ## Experimental Demo Estimate (illustrative, not ML, not measured)
 
 Once a battery has 3 valid Quick Tests, `iot/backend/demo_estimate.py` turns their **measured** values into two
@@ -185,7 +192,7 @@ banner and simulated profiles are tagged SIMULATED. See [docs/SIMULATION.md](doc
 ```bash
 pytest iot/tests -q                 # backend: 182 tests, includes the simulation run
 python -m iot.simulation.run        # 52 end-to-end checks
-cd dashboard && npm test            # dashboard: 53 tests (vitest + jsdom)
+cd dashboard && npm test            # dashboard: 56 tests (vitest + jsdom)
 cd dashboard && npm run build       # typecheck + production build
 ```
 

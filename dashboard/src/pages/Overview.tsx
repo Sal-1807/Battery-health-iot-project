@@ -6,7 +6,7 @@ import { usePoll } from "../lib/hooks";
 import Live from "./Live";
 import { ageSeconds, ALERT_LABEL, CELL_STATE_LABEL, fmt, fmtAge, fmtTime, FLAG_LABEL, TIMESTAMP_LABEL } from "../lib/format";
 import { Card, ConnectionPill, EmptyState, Loading, Pill, Provenance, SeverityPill, SourceBadge, StatTile } from "../components/ui";
-import { DemoEstimateTiles } from "../components/demo";
+import { DemoEstimateTiles, SampleResultTiles } from "../components/demo";
 
 function measuredKind(b: BatterySummary) {
   return b.source === "hardware" ? "measured" : "simulated";
@@ -260,12 +260,13 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
       {b.managed && !b.archived ? (
         <section className="space-y-2">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-base font-semibold">Health estimate</h2>
+            <h2 className="text-base font-semibold">Battery health</h2>
             <p className="text-xs text-ink-3">
               Quick Test Cycles {Math.min(b.quick_test_cycles?.count ?? 0, b.quick_test_cycles?.target ?? 3)} / {b.quick_test_cycles?.target ?? 3}
             </p>
           </div>
-          <DemoEstimateTiles e={b.quick_test_cycles?.demo_estimate} />
+          <SampleResultTiles />
+          <DemoEstimateTiles e={b.quick_test_cycles?.demo_estimate} compact />
           {b.latest_valid_prediction?.status === "experimental" && (
             <p className="text-xs text-ink-2">
               Saved ML model (separate): Experimental ML Estimate {fmt(b.latest_valid_prediction.soh_pct, 1)} % SoH,{" "}

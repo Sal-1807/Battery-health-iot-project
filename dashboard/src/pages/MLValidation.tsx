@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { FlaskConical, ShieldAlert } from "lucide-react";
 import type { PageProps } from "../App";
 import { api, type BatterySummary, type MlFold, type RegMetrics } from "../lib/api";
-import { DemoEstimateTiles, DemoPill } from "../components/demo";
+import { DemoEstimateTiles, DemoPill, SampleResultTiles } from "../components/demo";
 import { usePoll } from "../lib/hooks";
 import { fmt } from "../lib/format";
 import { CycleChart } from "../components/charts";
@@ -226,6 +226,7 @@ export default function MLValidation({ batteries = [] }: Partial<PageProps>) {
         <FlaskConical size={18} className="text-ink-3" /> Battery Health Predictions
       </h1>
 
+      <SampleResultTiles />
       <DemoEstimates batteries={batteries} />
       <ModelDemo />
 

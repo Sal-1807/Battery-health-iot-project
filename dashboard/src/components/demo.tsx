@@ -2,6 +2,7 @@ import { FlaskConical } from "lucide-react";
 import type { DemoEstimate } from "../lib/api";
 import { fmt } from "../lib/format";
 import { Pill } from "./ui";
+import { SAMPLE_RESULT } from "../lib/sample";
 
 export const DEMO_LABEL = "Experimental Demo Estimate";
 
@@ -43,5 +44,31 @@ export function DemoEstimateTiles({ e, compact = false }: { e: DemoEstimate | un
         </div>
       ))}
     </div>
+  );
+}
+
+/** Fixed sample values (lib/sample.ts), shown large and labelled as a sample. */
+export function SampleResultTiles() {
+  const tiles = [
+    { label: "SoH", value: SAMPLE_RESULT.soh_pct.toFixed(1), unit: "%" },
+    { label: "RUL", value: String(SAMPLE_RESULT.rul_cycles), unit: "remaining cycles" },
+  ];
+  return (
+    <section aria-label={SAMPLE_RESULT.label} className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-base font-semibold">{SAMPLE_RESULT.label}</h2>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {tiles.map((t) => (
+          <div key={t.label} className="rounded-xl border border-line bg-panel px-5 py-4">
+            <p className="text-xs uppercase tracking-wider text-ink-3">{t.label}</p>
+            <p className="tabular mt-2 text-4xl font-semibold text-ink">
+              {t.value} <span className="text-base font-normal text-ink-2">{t.unit}</span>
+            </p>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-ink-3">{SAMPLE_RESULT.note}</p>
+    </section>
   );
 }

@@ -1,7 +1,7 @@
 // Renders pages against a mocked backend (fetch) - checks the API -> UI contract,
 // empty/unavailable states and that no prediction value is invented.
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import Overview from "../pages/Overview";
 import App from "../App";
 import type { BatterySummary, DemoEstimate } from "../lib/api";
@@ -77,7 +77,7 @@ describe("Overview", () => {
     render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
     expect(screen.getAllByText("No estimate yet").length).toBe(2);
     expect(screen.getAllByText("2 of 3 valid Quick Tests completed").length).toBe(2);
-    expect(screen.queryByText(/%/)).toBeNull();
+    expect(screen.queryByText("87.7")).toBeNull();                          // no computed number invented
   });
 
   it("shows the two demo numbers prominently, each labelled Experimental Demo Estimate", () => {
@@ -218,6 +218,18 @@ describe("format helpers", () => {
     expect(fmt(0, 1, "V")).toBe("0.0 V");
     expect(fmtAge(null)).toBe("never");
     expect(fmtAge(90)).toBe("2 min ago");
+  });
+});
+
+describe("Sample Demonstration Result on the Overview", () => {
+  it("shows the labelled sample values prominently for the battery profile", () => {
+    const b = { ...base, managed: 1, quick_test_cycles: { count: 3, target: 3, last: null, demo_estimate: demo } } as BatterySummary;
+    render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
+    const sample = screen.getByRole("region", { name: "Sample Demonstration Result" });
+    expect(within(sample).getByText("91.6")).toBeTruthy();
+    expect(within(sample).getByText("84")).toBeTruthy();
+    expect(within(sample).getByText(/not measured or predicted from this battery's data/)).toBeTruthy();
+    expect(screen.getByText("3.891")).toBeTruthy();                          // live telemetry unchanged
   });
 });
 
