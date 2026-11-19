@@ -8,7 +8,7 @@ export const DEMO_LABEL = "Experimental Demo Estimate";
 
 export function SamplePill() {
   return (
-    <Pill tone="info" title={SAMPLE_RESULT.note}>
+    <Pill tone="info" title="Fixed sample values for demonstration; not measured, not computed from this battery, not a model output">
       {SAMPLE_RESULT.label}
     </Pill>
   );
@@ -57,7 +57,7 @@ export function DemoEstimateTiles({ e, compact = false }: { e: DemoEstimate | un
           )}
           <p className="mt-1 text-xs text-ink-3">
             {SAMPLE_MODE
-              ? SAMPLE_RESULT.note
+              ? null
               : ok
               ? `From ${e!.tests_used.length} measured 300 s Quick Tests · illustrative, not a measured or validated value`
               : e?.reason ?? "Needs completed valid Quick Tests"}

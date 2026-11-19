@@ -81,7 +81,6 @@ describe("Overview", () => {
     expect(screen.getByText("84")).toBeTruthy();
     expect(screen.getByText("remaining cycles")).toBeTruthy();
     expect(screen.getAllByText("Sample Demonstration Result").length).toBe(2);           // inside each card
-    expect(screen.getAllByText(/not measured or predicted from this battery's data/).length).toBe(2);
     expect(screen.queryByText("0.0")).toBeNull();
     expect(screen.queryByText(/From 3 measured 300 s Quick Tests/)).toBeNull();          // never attributed to the tests
     expect(screen.queryByRole("region", { name: "Sample Demonstration Result" })).toBeNull();   // no extra section
