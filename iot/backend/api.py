@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import logging
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -19,7 +21,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import __version__
 from .alerts import load_thresholds, now_iso, refresh_offline, save_thresholds
-from .config import Settings, get_settings
+from .config import DEFAULT_DB_PATH, Settings, get_settings
 from .cycles import aggregate_live_cycles, insert_cycle_features, store_prediction
 from .db import Database, row_to_dict
 from .model_service import ModelService
@@ -46,6 +48,27 @@ def profile_source(s: Settings) -> str:
     return "simulation" if s.mode == "simulation" else "hardware"
 
 
+def bind_db_mode(db: Database, s: Settings) -> None:
+    """A database belongs to one mode for life. Opening a simulation database in
+    production mode (or the reverse) would let real telemetry into simulated history
+    or vice versa, so it is refused."""
+    with db.write() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key='db_mode'").fetchone()
+        if row is None:
+            if conn.execute("SELECT 1 FROM readings WHERE source='hardware' LIMIT 1").fetchone():
+                bound = "production"
+            elif conn.execute("SELECT 1 FROM batteries WHERE battery_id LIKE 'SIM-BAT-%' LIMIT 1").fetchone():
+                bound = "simulation"
+            else:
+                bound = s.mode
+            conn.execute("INSERT INTO settings(key, value) VALUES ('db_mode', ?)", (json.dumps(bound),))
+        else:
+            bound = json.loads(row["value"])
+    if bound != s.mode:
+        raise RuntimeError(f"database {s.db_path} is a {bound} database; refusing to open it in {s.mode} mode "
+                           f"(set BHM_MODE={bound}, or point BHM_DB_PATH at a {s.mode} database)")
+
+
 def seed_simulation_profiles(db: Database) -> None:
     with db.write() as conn:
         for bid, label, cap in SIM_PROFILES:
@@ -59,7 +82,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     s = settings or get_settings()
     if s.mode not in ("production", "simulation"):
         raise ValueError(f"BHM_MODE must be 'production' or 'simulation', not {s.mode!r}")
+    if s.mode == "simulation" and Path(s.db_path).resolve() == DEFAULT_DB_PATH.resolve():
+        raise ValueError("BHM_MODE=simulation needs its own database: set BHM_DB_PATH (e.g. iot/data/simulation.db); "
+                         "refusing to use the production database")
     db = Database(s.db_path)
+    bind_db_mode(db, s)
     if s.mode == "simulation":
         seed_simulation_profiles(db)
     repair = reclassify_history(db, s)   # back-fill cell_state; reclassify false voltage alerts (idempotent)

@@ -24,8 +24,8 @@
   "status": "ok",
   "api_version": "1.0.0",
   "mode": "simulation",
-  "server_time": "2026-11-19T06:45:40.036Z",
-  "started_at": "2026-11-19T06:45:11.384Z",
+  "server_time": "2026-11-19T07:05:42.684Z",
+  "started_at": "2026-11-19T07:05:13.743Z",
   "database": {
    "ok": true,
    "path": "/home/user/Battery-health-iot-project/iot/data/simulation.db"
@@ -48,14 +48,14 @@
     "cycle_count_offset": null,
     "source": "hardware",
     "notes": "Physical cell profile (label rating)",
-    "created_at": "2026-11-19T06:45:10.530Z",
+    "created_at": "2026-11-19T07:05:12.950Z",
     "presence_evidence": null,
     "presence_since": null,
     "presence_last_ms": null,
     "presence_note": null,
     "managed": 1,
     "connection": {
-     "state": "never_seen",
+     "state": "not_selected",
      "age_s": null
     },
     "latest_reading": null,
@@ -91,14 +91,14 @@
     "cycle_count_offset": null,
     "source": "hardware",
     "notes": "Physical cell profile (label rating)",
-    "created_at": "2026-11-19T06:45:10.530Z",
+    "created_at": "2026-11-19T07:05:12.950Z",
     "presence_evidence": null,
     "presence_since": null,
     "presence_last_ms": null,
     "presence_note": null,
     "managed": 1,
     "connection": {
-     "state": "never_seen",
+     "state": "not_selected",
      "age_s": null
     },
     "latest_reading": null,
@@ -134,14 +134,14 @@
     "cycle_count_offset": null,
     "source": "hardware",
     "notes": "Physical cell profile (label rating)",
-    "created_at": "2026-11-19T06:45:10.530Z",
+    "created_at": "2026-11-19T07:05:12.950Z",
     "presence_evidence": null,
     "presence_since": null,
     "presence_last_ms": null,
     "presence_note": null,
     "managed": 1,
     "connection": {
-     "state": "never_seen",
+     "state": "not_selected",
      "age_s": null
     },
     "latest_reading": null,
@@ -177,15 +177,15 @@
     "cycle_count_offset": null,
     "source": "simulation",
     "notes": "Synthetic profile for the simulation workflow. Not a physical battery.",
-    "created_at": "2026-11-19T06:45:10.534Z",
+    "created_at": "2026-11-19T07:05:12.956Z",
     "presence_evidence": "current",
-    "presence_since": "2026-11-19T06:40:44.000Z",
-    "presence_last_ms": 1795070729000,
+    "presence_since": "2026-11-19T07:00:46.000Z",
+    "presence_last_ms": 1795071931000,
     "presence_note": null,
     "managed": 1,
     "connection": {
      "state": "online",
-     "age_s": 0.3
+     "age_s": 0.4
     },
     "latest_reading": {
      "id": 4349,
@@ -195,9 +195,9 @@
      "device_id": "sim-esp32-01",
      "source": "simulation",
      "transport": "usb_serial",
-     "ts": "2026-11-19T06:45:29.000Z",
+     "ts": "2026-11-19T07:05:31.000Z",
      "timestamp_source": "bridge",
-     "received_at": "2026-11-19T06:45:39.721Z",
+     "received_at": "2026-11-19T07:05:42.305Z",
      "voltage_v": 3.768,
      "current_a": 0.4501,
      "temperature_c": 25.0625,
@@ -215,7 +215,7 @@
      "battery_id": "SIM-BAT-A-3000",
      "cycle_id": 9,
      "cycle_number": null,
-     "created_at": "2026-11-19T06:45:39.372Z",
+     "created_at": "2026-11-19T07:05:41.947Z",
      "status": "unavailable",
      "model_version": "rf-nasa-5629ac18e134",
      "data_source": "simulation",
@@ -224,7 +224,7 @@
      "eol_predicted": null,
      "rul_cycles": null,
      "reasons": [
-      "SoH/RUL is not produced for physical battery profiles: the NASA-trained models have not been validated on these cells. The NASA demonstration remains available under NASA replay."
+      "SoH/RUL is not produced for physical batteries: the NASA-trained models have not been validated on these cells. The NASA demonstration remains available under NASA replay."
      ],
      "warnings": [],
      "out_of_range": [],
@@ -239,11 +239,11 @@
      "id": 9,
      "battery_id": "SIM-BAT-A-3000",
      "status": "active",
-     "start_ts": "2026-11-19T06:40:39.000Z",
-     "start_ms": 1795070439000,
+     "start_ts": "2026-11-19T07:00:41.000Z",
+     "start_ms": 1795071641000,
      "end_ts": null,
      "end_ms": null,
-     "last_ms": 1795070729000,
+     "last_ms": 1795071931000,
      "end_reason": null,
      "charge_mah": 36.249513888888885,
      "energy_wh": 0.13664166666666666,
@@ -260,8 +260,8 @@
      "min_voltage_v": 3.764,
      "peak_current_a": 0.4506,
      "max_temperature_c": 25.125,
-     "last_on_ms": 1795070729000,
-     "created_at": "2026-11-19T06:45:39.378Z",
+     "last_on_ms": 1795071931000,
+     "created_at": "2026-11-19T07:05:41.953Z",
      "duration_s": 290.0,
      "mean_current_a": 0.4499939655172413,
      "coverage": {
@@ -280,11 +280,11 @@
      "id": 9,
      "battery_id": "SIM-BAT-A-3000",
      "status": "active",
-     "start_ts": "2026-11-19T06:40:39.000Z",
-     "start_ms": 1795070439000,
+     "start_ts": "2026-11-19T07:00:41.000Z",
+     "start_ms": 1795071641000,
      "end_ts": null,
      "end_ms": null,
-     "last_ms": 1795070729000,
+     "last_ms": 1795071931000,
      "end_reason": null,
      "charge_mah": 36.249513888888885,
      "energy_wh": 0.13664166666666666,
@@ -301,8 +301,8 @@
      "min_voltage_v": 3.764,
      "peak_current_a": 0.4506,
      "max_temperature_c": 25.125,
-     "last_on_ms": 1795070729000,
-     "created_at": "2026-11-19T06:45:39.378Z",
+     "last_on_ms": 1795071931000,
+     "created_at": "2026-11-19T07:05:41.953Z",
      "duration_s": 290.0,
      "mean_current_a": 0.4499939655172413,
      "coverage": {
@@ -321,12 +321,12 @@
      "id": 4,
      "device_id": "sim-esp32-01",
      "battery_id": "SIM-BAT-A-3000",
-     "start_ms": 1794848459000,
-     "start_ts": "2026-11-16T17:00:59.000Z",
+     "start_ms": 1794849661000,
+     "start_ts": "2026-11-16T17:21:01.000Z",
      "end_ms": null,
      "end_ts": null,
      "note": "simulation",
-     "created_at": "2026-11-16T17:00:59.000Z"
+     "created_at": "2026-11-16T17:21:01.000Z"
     },
     "stats": {
      "n_sessions": 5,
@@ -337,7 +337,7 @@
      "equivalent_full_cycles": 0.4421762731481418,
      "completed_cycles": 0,
      "capacity_measurements": [],
-     "last_session_start": "2026-11-19T06:40:39.000Z",
+     "last_session_start": "2026-11-19T07:00:41.000Z",
      "notes": "EFC = total measured discharge / this battery's rated capacity (throughput, not a cycle count). Completed cycles = rested-full to cutoff without gaps (unvalidated protocol)."
     }
    },
@@ -351,14 +351,14 @@
     "cycle_count_offset": null,
     "source": "simulation",
     "notes": "Synthetic profile for the simulation workflow. Not a physical battery.",
-    "created_at": "2026-11-19T06:45:10.534Z",
+    "created_at": "2026-11-19T07:05:12.956Z",
     "presence_evidence": null,
     "presence_since": null,
     "presence_last_ms": null,
     "presence_note": "cleared: battery switched",
     "managed": 1,
     "connection": {
-     "state": "online",
+     "state": "not_selected",
      "age_s": 3.6
     },
     "latest_reading": {
@@ -369,9 +369,9 @@
      "device_id": "sim-esp32-01",
      "source": "simulation",
      "transport": "usb_serial",
-     "ts": "2026-11-16T17:00:52.000Z",
+     "ts": "2026-11-16T17:20:54.000Z",
      "timestamp_source": "bridge",
-     "received_at": "2026-11-19T06:45:36.450Z",
+     "received_at": "2026-11-19T07:05:39.059Z",
      "voltage_v": 3.796,
      "current_a": 0.5001,
      "temperature_c": 25.125,
@@ -389,7 +389,7 @@
      "battery_id": "SIM-BAT-B-3000",
      "cycle_id": 5,
      "cycle_number": null,
-     "created_at": "2026-11-19T06:45:36.457Z",
+     "created_at": "2026-11-19T07:05:39.066Z",
      "status": "unavailable",
      "model_version": null,
      "data_source": "simulation",
@@ -398,7 +398,7 @@
      "eol_predicted": null,
      "rul_cycles": null,
      "reasons": [
-      "SoH/RUL is not produced for physical battery profiles: the NASA-trained models have not been validated on these cells. The NASA demonstration remains available under NASA replay."
+      "SoH/RUL is not produced for physical batteries: the NASA-trained models have not been validated on these cells. The NASA demonstration remains available under NASA replay."
      ],
      "warnings": [],
      "out_of_range": [],
@@ -414,11 +414,11 @@
      "id": 5,
      "battery_id": "SIM-BAT-B-3000",
      "status": "ended",
-     "start_ts": "2026-11-16T16:50:52.000Z",
-     "start_ms": 1794847852000,
-     "end_ts": "2026-11-16T17:00:52.000Z",
-     "end_ms": 1794848452000,
-     "last_ms": 1794848452000,
+     "start_ts": "2026-11-16T17:10:54.000Z",
+     "start_ms": 1794849054000,
+     "end_ts": "2026-11-16T17:20:54.000Z",
+     "end_ms": 1794849654000,
+     "last_ms": 1794849654000,
      "end_reason": "battery_switched",
      "charge_mah": 83.33541666666665,
      "energy_wh": 0.3175055555555555,
@@ -435,8 +435,8 @@
      "min_voltage_v": 3.796,
      "peak_current_a": 0.5007,
      "max_temperature_c": 25.25,
-     "last_on_ms": 1794848452000,
-     "created_at": "2026-11-19T06:45:35.697Z",
+     "last_on_ms": 1794849654000,
+     "created_at": "2026-11-19T07:05:38.176Z",
      "duration_s": 600.0,
      "mean_current_a": 0.5000124999999999,
      "coverage": {
@@ -461,7 +461,7 @@
      "equivalent_full_cycles": 0.1111106712962963,
      "completed_cycles": 0,
      "capacity_measurements": [],
-     "last_session_start": "2026-11-16T16:50:52.000Z",
+     "last_session_start": "2026-11-16T17:10:54.000Z",
      "notes": "EFC = total measured discharge / this battery's rated capacity (throughput, not a cycle count). Completed cycles = rested-full to cutoff without gaps (unvalidated protocol)."
     }
    },
@@ -475,15 +475,15 @@
     "cycle_count_offset": null,
     "source": "simulation",
     "notes": "Synthetic profile for the simulation workflow. Not a physical battery.",
-    "created_at": "2026-11-19T06:45:10.534Z",
+    "created_at": "2026-11-19T07:05:12.957Z",
     "presence_evidence": null,
     "presence_since": null,
     "presence_last_ms": null,
     "presence_note": "cleared: battery switched",
     "managed": 1,
     "connection": {
-     "state": "online",
-     "age_s": 6.7
+     "state": "not_selected",
+     "age_s": 7.0
     },
     "latest_reading": {
      "id": 3333,
@@ -493,9 +493,9 @@
      "device_id": "sim-esp32-01",
      "source": "simulation",
      "transport": "usb_serial",
-     "ts": "2026-11-16T14:07:27.000Z",
+     "ts": "2026-11-16T14:27:29.000Z",
      "timestamp_source": "bridge",
-     "received_at": "2026-11-19T06:45:33.312Z",
+     "received_at": "2026-11-19T07:05:35.664Z",
      "voltage_v": 3.068,
      "current_a": 0.0,
      "temperature_c": 25.625,
@@ -513,7 +513,7 @@
      "battery_id": "SIM-BAT-C-2500",
      "cycle_id": 3,
      "cycle_number": null,
-     "created_at": "2026-11-19T06:45:33.208Z",
+     "created_at": "2026-11-19T07:05:35.556Z",
      "status": "unavailable",
      "model_version": "rf-nasa-5629ac18e134",
      "data_source": "simulation",
@@ -522,7 +522,7 @@
      "eol_predicted": null,
      "rul_cycles": null,
      "reasons": [
-      "SoH/RUL is not produced for physical battery profiles: the NASA-trained models have not been validated on these cells. The NASA demonstration remains available under NASA replay."
+      "SoH/RUL is not produced for physical batteries: the NASA-trained models have not been validated on these cells. The NASA demonstration remains available under NASA replay."
      ],
      "warnings": [],
      "out_of_range": [],
@@ -540,11 +540,11 @@
      "id": 3,
      "battery_id": "SIM-BAT-C-2500",
      "status": "ended",
-     "start_ts": "2026-11-16T12:05:57.000Z",
-     "start_ms": 1794830757000,
-     "end_ts": "2026-11-16T14:02:17.000Z",
-     "end_ms": 1794837737000,
-     "last_ms": 1794837747000,
+     "start_ts": "2026-11-16T12:25:59.000Z",
+     "start_ms": 1794831959000,
+     "end_ts": "2026-11-16T14:22:19.000Z",
+     "end_ms": 1794838939000,
+     "last_ms": 1794838949000,
      "end_reason": "load_stopped",
      "charge_mah": 2326.6340277777717,
      "energy_wh": 8.54450277777778,
@@ -561,8 +561,8 @@
      "min_voltage_v": 2.996,
      "peak_current_a": 1.2008,
      "max_temperature_c": 26.125,
-     "last_on_ms": 1794837737000,
-     "created_at": "2026-11-19T06:45:28.703Z",
+     "last_on_ms": 1794838939000,
+     "created_at": "2026-11-19T07:05:30.811Z",
      "duration_s": 6980.0,
      "mean_current_a": 1.1999831661891085,
      "coverage": {
@@ -589,20 +589,20 @@
      "capacity_measurements": [
       {
        "session_id": 2,
-       "start_ts": "2026-11-16T07:59:47.000Z",
+       "start_ts": "2026-11-16T08:19:49.000Z",
        "charge_mah": 2373.3465277777764,
        "uncertainty_mah": 6.666388888888889,
        "energy_wh": 8.716430555555553
       },
       {
        "session_id": 3,
-       "start_ts": "2026-11-16T12:05:57.000Z",
+       "start_ts": "2026-11-16T12:25:59.000Z",
        "charge_mah": 2326.6340277777717,
        "uncertainty_mah": 6.664722222222222,
        "energy_wh": 8.54450277777778
       }
      ],
-     "last_session_start": "2026-11-16T12:05:57.000Z",
+     "last_session_start": "2026-11-16T12:25:59.000Z",
      "notes": "EFC = total measured discharge / this battery's rated capacity (throughput, not a cycle count). Completed cycles = rested-full to cutoff without gaps (unvalidated protocol)."
     }
    }
@@ -620,15 +620,15 @@
      "id": 4,
      "device_id": "sim-esp32-01",
      "battery_id": "SIM-BAT-A-3000",
-     "start_ms": 1794848459000,
-     "start_ts": "2026-11-16T17:00:59.000Z",
+     "start_ms": 1794849661000,
+     "start_ts": "2026-11-16T17:21:01.000Z",
      "end_ms": null,
      "end_ts": null,
      "note": "simulation",
-     "created_at": "2026-11-16T17:00:59.000Z"
+     "created_at": "2026-11-16T17:21:01.000Z"
     },
     "presence_evidence": "current",
-    "last_reading_ts": "2026-11-19T06:45:29.000Z",
+    "last_reading_ts": "2026-11-19T07:05:31.000Z",
     "last_cell_state": "verified_current",
     "n_readings": 2338,
     "stats": {
@@ -640,7 +640,7 @@
      "equivalent_full_cycles": 0.4421762731481418,
      "completed_cycles": 0,
      "capacity_measurements": [],
-     "last_session_start": "2026-11-19T06:40:39.000Z",
+     "last_session_start": "2026-11-19T07:00:41.000Z",
      "notes": "EFC = total measured discharge / this battery's rated capacity (throughput, not a cycle count). Completed cycles = rested-full to cutoff without gaps (unvalidated protocol)."
     },
     "soh": "unavailable"
@@ -653,7 +653,7 @@
     "rated_capacity_mah": 3000.0,
     "assignment": null,
     "presence_evidence": null,
-    "last_reading_ts": "2026-11-16T17:00:52.000Z",
+    "last_reading_ts": "2026-11-16T17:20:54.000Z",
     "last_cell_state": "verified_current",
     "n_readings": 508,
     "stats": {
@@ -665,7 +665,7 @@
      "equivalent_full_cycles": 0.1111106712962963,
      "completed_cycles": 0,
      "capacity_measurements": [],
-     "last_session_start": "2026-11-16T16:50:52.000Z",
+     "last_session_start": "2026-11-16T17:10:54.000Z",
      "notes": "EFC = total measured discharge / this battery's rated capacity (throughput, not a cycle count). Completed cycles = rested-full to cutoff without gaps (unvalidated protocol)."
     },
     "soh": "unavailable"
@@ -678,7 +678,7 @@
     "rated_capacity_mah": 2500.0,
     "assignment": null,
     "presence_evidence": null,
-    "last_reading_ts": "2026-11-16T14:07:27.000Z",
+    "last_reading_ts": "2026-11-16T14:27:29.000Z",
     "last_cell_state": "verified_current",
     "n_readings": 1500,
     "stats": {
@@ -692,20 +692,20 @@
      "capacity_measurements": [
       {
        "session_id": 2,
-       "start_ts": "2026-11-16T07:59:47.000Z",
+       "start_ts": "2026-11-16T08:19:49.000Z",
        "charge_mah": 2373.3465277777764,
        "uncertainty_mah": 6.666388888888889,
        "energy_wh": 8.716430555555553
       },
       {
        "session_id": 3,
-       "start_ts": "2026-11-16T12:05:57.000Z",
+       "start_ts": "2026-11-16T12:25:59.000Z",
        "charge_mah": 2326.6340277777717,
        "uncertainty_mah": 6.664722222222222,
        "energy_wh": 8.54450277777778
       }
      ],
-     "last_session_start": "2026-11-16T12:05:57.000Z",
+     "last_session_start": "2026-11-16T12:25:59.000Z",
      "notes": "EFC = total measured discharge / this battery's rated capacity (throughput, not a cycle count). Completed cycles = rested-full to cutoff without gaps (unvalidated protocol)."
     },
     "soh": "unavailable"
@@ -717,18 +717,18 @@
   "devices": [
    {
     "device_id": "sim-esp32-01",
-    "last_seen_at": "2026-11-19T06:45:39.721Z",
+    "last_seen_at": "2026-11-19T07:05:42.305Z",
     "firmware_version": "simulation",
     "assignment": {
      "id": 4,
      "device_id": "sim-esp32-01",
      "battery_id": "SIM-BAT-A-3000",
-     "start_ms": 1794848459000,
-     "start_ts": "2026-11-16T17:00:59.000Z",
+     "start_ms": 1794849661000,
+     "start_ts": "2026-11-16T17:21:01.000Z",
      "end_ms": null,
      "end_ts": null,
      "note": "simulation",
-     "created_at": "2026-11-16T17:00:59.000Z"
+     "created_at": "2026-11-16T17:21:01.000Z"
     }
    }
   ]
@@ -816,7 +816,7 @@
     "n_comparable_tests": 2,
     "reference": {
      "session_id": 2,
-     "start_ts": "2026-11-16T07:59:47.000Z",
+     "start_ts": "2026-11-16T08:19:49.000Z",
      "capacity_mah": 2373.3465277777764,
      "mean_current_a": 1.200006671348314,
      "c_rate": 0.4800026685393256,
@@ -833,7 +833,7 @@
      {
       "index": 1,
       "session_id": 2,
-      "start_ts": "2026-11-16T07:59:47.000Z",
+      "start_ts": "2026-11-16T08:19:49.000Z",
       "capacity_mah": 2373.3465277777764,
       "uncertainty_mah": 6.666388888888889,
       "energy_wh": 8.716430555555553,
@@ -844,7 +844,7 @@
      {
       "index": 2,
       "session_id": 3,
-      "start_ts": "2026-11-16T12:05:57.000Z",
+      "start_ts": "2026-11-16T12:25:59.000Z",
       "capacity_mah": 2326.6340277777717,
       "uncertainty_mah": 6.664722222222222,
       "energy_wh": 8.54450277777778,
@@ -897,8 +897,8 @@
   "trends": [
    {
     "session_id": 1,
-    "start_ts": "2026-11-16T06:46:03.000Z",
-    "start_ms": 1794811563000,
+    "start_ts": "2026-11-16T07:06:05.000Z",
+    "start_ms": 1794812765000,
     "mean_temperature_c": 25.633328531701892,
     "max_temperature_c": 25.7488,
     "mean_loaded_voltage_v": 4.0,
@@ -907,8 +907,8 @@
    },
    {
     "session_id": 6,
-    "start_ts": "2026-11-16T17:01:02.000Z",
-    "start_ms": 1794848462000,
+    "start_ts": "2026-11-16T17:21:04.000Z",
+    "start_ms": 1794849664000,
     "mean_temperature_c": 25.072830578512395,
     "max_temperature_c": 25.125,
     "mean_loaded_voltage_v": 4.0158347107438015,
@@ -917,8 +917,8 @@
    },
    {
     "session_id": 7,
-    "start_ts": "2026-11-16T17:22:37.000Z",
-    "start_ms": 1794849757000,
+    "start_ts": "2026-11-16T17:42:39.000Z",
+    "start_ms": 1794850959000,
     "mean_temperature_c": 25.072763559322034,
     "max_temperature_c": 25.1233,
     "mean_loaded_voltage_v": 3.774896265560166,
@@ -927,8 +927,8 @@
    },
    {
     "session_id": 8,
-    "start_ts": "2026-11-16T17:54:17.000Z",
-    "start_ms": 1794851657000,
+    "start_ts": "2026-11-16T18:14:19.000Z",
+    "start_ms": 1794852859000,
     "mean_temperature_c": 25.042285245901642,
     "max_temperature_c": 25.0778,
     "mean_loaded_voltage_v": 3.7,
@@ -937,8 +937,8 @@
    },
    {
     "session_id": 9,
-    "start_ts": "2026-11-19T06:40:39.000Z",
-    "start_ms": 1795070439000,
+    "start_ts": "2026-11-19T07:00:41.000Z",
+    "start_ms": 1795071641000,
     "mean_temperature_c": 25.031779661016948,
     "max_temperature_c": 25.125,
     "mean_loaded_voltage_v": 3.769423728813559,
@@ -949,8 +949,8 @@
   "sessions": [
    {
     "session_id": 1,
-    "start_ts": "2026-11-16T06:46:03.000Z",
-    "end_ts": "2026-11-16T07:46:03.000Z",
+    "start_ts": "2026-11-16T07:06:05.000Z",
+    "end_ts": "2026-11-16T08:06:05.000Z",
     "status": "ended",
     "end_reason": "load_stopped",
     "charge_mah": 999.9999999999806,
@@ -971,8 +971,8 @@
    },
    {
     "session_id": 6,
-    "start_ts": "2026-11-16T17:01:02.000Z",
-    "end_ts": "2026-11-16T17:11:02.000Z",
+    "start_ts": "2026-11-16T17:21:04.000Z",
+    "end_ts": "2026-11-16T17:31:04.000Z",
     "status": "ended",
     "end_reason": "load_stopped",
     "charge_mah": 83.33486111111108,
@@ -993,8 +993,8 @@
    },
    {
     "session_id": 7,
-    "start_ts": "2026-11-16T17:22:37.000Z",
-    "end_ts": "2026-11-16T17:44:12.000Z",
+    "start_ts": "2026-11-16T17:42:39.000Z",
+    "end_ts": "2026-11-16T18:04:14.000Z",
     "status": "ended",
     "end_reason": "telemetry_gap",
     "charge_mah": 165.2777777777782,
@@ -1017,8 +1017,8 @@
    },
    {
     "session_id": 8,
-    "start_ts": "2026-11-16T17:54:17.000Z",
-    "end_ts": "2026-11-16T17:59:17.000Z",
+    "start_ts": "2026-11-16T18:14:19.000Z",
+    "end_ts": "2026-11-16T18:19:19.000Z",
     "status": "ended",
     "end_reason": "load_stopped",
     "charge_mah": 41.666666666666615,
@@ -1039,7 +1039,7 @@
    },
    {
     "session_id": 9,
-    "start_ts": "2026-11-19T06:40:39.000Z",
+    "start_ts": "2026-11-19T07:00:41.000Z",
     "end_ts": null,
     "status": "active",
     "end_reason": null,
@@ -1103,8 +1103,8 @@
   "trends": [
    {
     "session_id": 4,
-    "start_ts": "2026-11-16T16:09:42.000Z",
-    "start_ms": 1794845382000,
+    "start_ts": "2026-11-16T16:29:44.000Z",
+    "start_ms": 1794846584000,
     "mean_temperature_c": 25.13157894736842,
     "max_temperature_c": 25.25,
     "mean_loaded_voltage_v": 3.8556232686980607,
@@ -1113,8 +1113,8 @@
    },
    {
     "session_id": 5,
-    "start_ts": "2026-11-16T16:50:52.000Z",
-    "start_ms": 1794847852000,
+    "start_ts": "2026-11-16T17:10:54.000Z",
+    "start_ms": 1794849054000,
     "mean_temperature_c": 25.171487603305785,
     "max_temperature_c": 25.25,
     "mean_loaded_voltage_v": 3.8096859504132228,
@@ -1125,8 +1125,8 @@
   "sessions": [
    {
     "session_id": 4,
-    "start_ts": "2026-11-16T16:09:42.000Z",
-    "end_ts": "2026-11-16T16:39:42.000Z",
+    "start_ts": "2026-11-16T16:29:44.000Z",
+    "end_ts": "2026-11-16T16:59:44.000Z",
     "status": "ended",
     "end_reason": "load_stopped",
     "charge_mah": 249.99659722222225,
@@ -1147,8 +1147,8 @@
    },
    {
     "session_id": 5,
-    "start_ts": "2026-11-16T16:50:52.000Z",
-    "end_ts": "2026-11-16T17:00:52.000Z",
+    "start_ts": "2026-11-16T17:10:54.000Z",
+    "end_ts": "2026-11-16T17:20:54.000Z",
     "status": "ended",
     "end_reason": "battery_switched",
     "charge_mah": 83.33541666666665,
@@ -1202,7 +1202,7 @@
   "n_comparable_tests": 2,
   "reference": {
    "session_id": 2,
-   "start_ts": "2026-11-16T07:59:47.000Z",
+   "start_ts": "2026-11-16T08:19:49.000Z",
    "capacity_mah": 2373.3465277777764,
    "mean_current_a": 1.200006671348314,
    "c_rate": 0.4800026685393256,
@@ -1219,7 +1219,7 @@
    {
     "index": 1,
     "session_id": 2,
-    "start_ts": "2026-11-16T07:59:47.000Z",
+    "start_ts": "2026-11-16T08:19:49.000Z",
     "capacity_mah": 2373.3465277777764,
     "uncertainty_mah": 6.666388888888889,
     "energy_wh": 8.716430555555553,
@@ -1230,7 +1230,7 @@
    {
     "index": 2,
     "session_id": 3,
-    "start_ts": "2026-11-16T12:05:57.000Z",
+    "start_ts": "2026-11-16T12:25:59.000Z",
     "capacity_mah": 2326.6340277777717,
     "uncertainty_mah": 6.664722222222222,
     "energy_wh": 8.54450277777778,
@@ -1242,8 +1242,8 @@
   "trends": [
    {
     "session_id": 2,
-    "start_ts": "2026-11-16T07:59:47.000Z",
-    "start_ms": 1794815987000,
+    "start_ts": "2026-11-16T08:19:49.000Z",
+    "start_ms": 1794817189000,
     "mean_temperature_c": 25.993075035063114,
     "max_temperature_c": 26.125,
     "mean_loaded_voltage_v": 3.672454417952314,
@@ -1252,8 +1252,8 @@
    },
    {
     "session_id": 3,
-    "start_ts": "2026-11-16T12:05:57.000Z",
-    "start_ms": 1794830757000,
+    "start_ts": "2026-11-16T12:25:59.000Z",
+    "start_ms": 1794831959000,
     "mean_temperature_c": 25.992042203147353,
     "max_temperature_c": 26.125,
     "mean_loaded_voltage_v": 3.6723090128755365,
@@ -1264,8 +1264,8 @@
   "sessions": [
    {
     "session_id": 2,
-    "start_ts": "2026-11-16T07:59:47.000Z",
-    "end_ts": "2026-11-16T09:58:27.000Z",
+    "start_ts": "2026-11-16T08:19:49.000Z",
+    "end_ts": "2026-11-16T10:18:29.000Z",
     "status": "ended",
     "end_reason": "load_stopped",
     "charge_mah": 2373.3465277777764,
@@ -1283,8 +1283,8 @@
    },
    {
     "session_id": 3,
-    "start_ts": "2026-11-16T12:05:57.000Z",
-    "end_ts": "2026-11-16T14:02:17.000Z",
+    "start_ts": "2026-11-16T12:25:59.000Z",
+    "end_ts": "2026-11-16T14:22:19.000Z",
     "status": "ended",
     "end_reason": "load_stopped",
     "charge_mah": 2326.6340277777717,
@@ -1324,9 +1324,9 @@
     "battery_id": "SIM-BAT-A-3000",
     "device_id": "sim-esp32-01",
     "state": "completed",
-    "created_at": "2026-11-19T06:45:39.357Z",
-    "started_at": "2026-11-19T06:40:34.000Z",
-    "ended_at": "2026-11-19T06:43:09.000Z",
+    "created_at": "2026-11-19T07:05:41.931Z",
+    "started_at": "2026-11-19T07:00:36.000Z",
+    "ended_at": "2026-11-19T07:03:11.000Z",
     "notes": "SIMULATION",
     "abort_reason": null,
     "checklist": {
@@ -1339,32 +1339,32 @@
      "cutoff_v": 3.0,
      "load_resistance_ohm": 8.0,
      "load_power_rating_w": 5.0,
-     "updated_at": "2026-11-19T06:45:39.363Z"
+     "updated_at": "2026-11-19T07:05:41.937Z"
     },
     "checklist_problems": [],
     "history": [
      {
       "state": "not_started",
-      "ms": 1795070739357,
-      "ts": "2026-11-19T06:45:39.357Z",
+      "ms": 1795071941931,
+      "ts": "2026-11-19T07:05:41.931Z",
       "note": "created"
      },
      {
       "state": "ready",
-      "ms": 1795070739363,
-      "ts": "2026-11-19T06:45:39.363Z",
+      "ms": 1795071941937,
+      "ts": "2026-11-19T07:05:41.937Z",
       "note": "checklist complete; device sim-esp32-01"
      },
      {
       "state": "running",
-      "ms": 1795070434000,
-      "ts": "2026-11-19T06:40:34.000Z",
+      "ms": 1795071636000,
+      "ts": "2026-11-19T07:00:36.000Z",
       "note": null
      },
      {
       "state": "completed",
-      "ms": 1795070589000,
-      "ts": "2026-11-19T06:43:09.000Z",
+      "ms": 1795071791000,
+      "ts": "2026-11-19T07:03:11.000Z",
       "note": null
      }
     ],
@@ -1452,7 +1452,7 @@
     },
     "hardware_state": {
      "description": "load current 0.450 A measured: a load appears to be connected",
-     "last_reading_ts": "2026-11-19T06:45:29.000Z",
+     "last_reading_ts": "2026-11-19T07:05:31.000Z",
      "battery_selected_on": "sim-esp32-01"
     },
     "hardware_notice": "Software test state only. This did not connect, disconnect or switch the battery or the load, and there is no automatic voltage cutoff or battery protection.",
@@ -1465,9 +1465,9 @@
     "battery_id": "SIM-BAT-A-3000",
     "device_id": "sim-esp32-01",
     "state": "completed",
-    "created_at": "2026-11-19T06:45:37.321Z",
-    "started_at": "2026-11-16T17:21:52.000Z",
-    "ended_at": "2026-11-16T18:00:02.000Z",
+    "created_at": "2026-11-19T07:05:39.964Z",
+    "started_at": "2026-11-16T17:41:54.000Z",
+    "ended_at": "2026-11-16T18:20:04.000Z",
     "notes": "SIMULATION",
     "abort_reason": null,
     "checklist": {
@@ -1480,32 +1480,32 @@
      "cutoff_v": 3.0,
      "load_resistance_ohm": 8.0,
      "load_power_rating_w": 5.0,
-     "updated_at": "2026-11-19T06:45:37.328Z"
+     "updated_at": "2026-11-19T07:05:39.970Z"
     },
     "checklist_problems": [],
     "history": [
      {
       "state": "not_started",
-      "ms": 1795070737321,
-      "ts": "2026-11-19T06:45:37.321Z",
+      "ms": 1795071939964,
+      "ts": "2026-11-19T07:05:39.964Z",
       "note": "created"
      },
      {
       "state": "ready",
-      "ms": 1795070737328,
-      "ts": "2026-11-19T06:45:37.328Z",
+      "ms": 1795071939970,
+      "ts": "2026-11-19T07:05:39.970Z",
       "note": "checklist complete; device sim-esp32-01"
      },
      {
       "state": "running",
-      "ms": 1794849712000,
-      "ts": "2026-11-16T17:21:52.000Z",
+      "ms": 1794850914000,
+      "ts": "2026-11-16T17:41:54.000Z",
       "note": null
      },
      {
       "state": "completed",
-      "ms": 1794852002000,
-      "ts": "2026-11-16T18:00:02.000Z",
+      "ms": 1794853204000,
+      "ts": "2026-11-16T18:20:04.000Z",
       "note": null
      }
     ],
@@ -1529,13 +1529,13 @@
      "delivered_wh": 0.778055555555553,
      "gaps": [
       {
-       "from": "2026-11-16T17:32:37.000Z",
-       "to": "2026-11-16T17:34:12.000Z",
+       "from": "2026-11-16T17:52:39.000Z",
+       "to": "2026-11-16T17:54:14.000Z",
        "duration_s": 95.0
       },
       {
-       "from": "2026-11-16T17:44:12.000Z",
-       "to": "2026-11-16T17:54:17.000Z",
+       "from": "2026-11-16T18:04:14.000Z",
+       "to": "2026-11-16T18:14:19.000Z",
        "duration_s": 605.0
       }
      ],
@@ -1604,7 +1604,7 @@
     },
     "hardware_state": {
      "description": "load current 0.450 A measured: a load appears to be connected",
-     "last_reading_ts": "2026-11-19T06:45:29.000Z",
+     "last_reading_ts": "2026-11-19T07:05:31.000Z",
      "battery_selected_on": "sim-esp32-01"
     },
     "hardware_notice": "Software test state only. This did not connect, disconnect or switch the battery or the load, and there is no automatic voltage cutoff or battery protection.",
@@ -1617,9 +1617,9 @@
     "battery_id": "SIM-BAT-C-2500",
     "device_id": "sim-esp32-01",
     "state": "completed",
-    "created_at": "2026-11-19T06:45:23.723Z",
-    "started_at": "2026-11-16T07:57:32.000Z",
-    "ended_at": "2026-11-16T10:03:52.000Z",
+    "created_at": "2026-11-19T07:05:25.637Z",
+    "started_at": "2026-11-16T08:17:34.000Z",
+    "ended_at": "2026-11-16T10:23:54.000Z",
     "notes": "SIMULATION",
     "abort_reason": null,
     "checklist": {
@@ -1632,32 +1632,32 @@
      "cutoff_v": 3.0,
      "load_resistance_ohm": 3.0,
      "load_power_rating_w": 10.0,
-     "updated_at": "2026-11-19T06:45:23.729Z"
+     "updated_at": "2026-11-19T07:05:25.644Z"
     },
     "checklist_problems": [],
     "history": [
      {
       "state": "not_started",
-      "ms": 1795070723723,
-      "ts": "2026-11-19T06:45:23.723Z",
+      "ms": 1795071925637,
+      "ts": "2026-11-19T07:05:25.637Z",
       "note": "created"
      },
      {
       "state": "ready",
-      "ms": 1795070723729,
-      "ts": "2026-11-19T06:45:23.729Z",
+      "ms": 1795071925644,
+      "ts": "2026-11-19T07:05:25.644Z",
       "note": "checklist complete; device sim-esp32-01"
      },
      {
       "state": "running",
-      "ms": 1794815852000,
-      "ts": "2026-11-16T07:57:32.000Z",
+      "ms": 1794817054000,
+      "ts": "2026-11-16T08:17:34.000Z",
       "note": null
      },
      {
       "state": "completed",
-      "ms": 1794823432000,
-      "ts": "2026-11-16T10:03:52.000Z",
+      "ms": 1794824634000,
+      "ts": "2026-11-16T10:23:54.000Z",
       "note": null
      }
     ],
@@ -1745,7 +1745,7 @@
     },
     "hardware_state": {
      "description": "no recent telemetry: physical state unknown",
-     "last_reading_ts": "2026-11-16T14:07:27.000Z",
+     "last_reading_ts": "2026-11-16T14:27:29.000Z",
      "battery_selected_on": null
     },
     "hardware_notice": "Software test state only. This did not connect, disconnect or switch the battery or the load, and there is no automatic voltage cutoff or battery protection.",
@@ -1758,9 +1758,9 @@
     "battery_id": "SIM-BAT-A-3000",
     "device_id": "sim-esp32-01",
     "state": "completed",
-    "created_at": "2026-11-19T06:45:11.441Z",
-    "started_at": "2026-11-16T06:45:16.000Z",
-    "ended_at": "2026-11-16T07:46:47.000Z",
+    "created_at": "2026-11-19T07:05:13.812Z",
+    "started_at": "2026-11-16T07:05:18.000Z",
+    "ended_at": "2026-11-16T08:06:49.000Z",
     "notes": "SIMULATION",
     "abort_reason": null,
     "checklist": {
@@ -1773,32 +1773,32 @@
      "cutoff_v": 3.0,
      "load_resistance_ohm": 4.0,
      "load_power_rating_w": 10.0,
-     "updated_at": "2026-11-19T06:45:11.447Z"
+     "updated_at": "2026-11-19T07:05:13.819Z"
     },
     "checklist_problems": [],
     "history": [
      {
       "state": "not_started",
-      "ms": 1795070711441,
-      "ts": "2026-11-19T06:45:11.441Z",
+      "ms": 1795071913812,
+      "ts": "2026-11-19T07:05:13.812Z",
       "note": "created"
      },
      {
       "state": "ready",
-      "ms": 1795070711447,
-      "ts": "2026-11-19T06:45:11.447Z",
+      "ms": 1795071913819,
+      "ts": "2026-11-19T07:05:13.819Z",
       "note": "checklist complete; device sim-esp32-01"
      },
      {
       "state": "running",
-      "ms": 1794811516000,
-      "ts": "2026-11-16T06:45:16.000Z",
+      "ms": 1794812718000,
+      "ts": "2026-11-16T07:05:18.000Z",
       "note": null
      },
      {
       "state": "completed",
-      "ms": 1794815207000,
-      "ts": "2026-11-16T07:46:47.000Z",
+      "ms": 1794816409000,
+      "ts": "2026-11-16T08:06:49.000Z",
       "note": null
      }
     ],
@@ -1886,7 +1886,7 @@
     },
     "hardware_state": {
      "description": "load current 0.450 A measured: a load appears to be connected",
-     "last_reading_ts": "2026-11-19T06:45:29.000Z",
+     "last_reading_ts": "2026-11-19T07:05:31.000Z",
      "battery_selected_on": "sim-esp32-01"
     },
     "hardware_notice": "Software test state only. This did not connect, disconnect or switch the battery or the load, and there is no automatic voltage cutoff or battery protection.",
@@ -1902,9 +1902,9 @@
   "battery_id": "SIM-BAT-A-3000",
   "device_id": "sim-esp32-01",
   "state": "completed",
-  "created_at": "2026-11-19T06:45:39.357Z",
-  "started_at": "2026-11-19T06:40:34.000Z",
-  "ended_at": "2026-11-19T06:43:09.000Z",
+  "created_at": "2026-11-19T07:05:41.931Z",
+  "started_at": "2026-11-19T07:00:36.000Z",
+  "ended_at": "2026-11-19T07:03:11.000Z",
   "notes": "SIMULATION",
   "abort_reason": null,
   "checklist": {
@@ -1917,32 +1917,32 @@
    "cutoff_v": 3.0,
    "load_resistance_ohm": 8.0,
    "load_power_rating_w": 5.0,
-   "updated_at": "2026-11-19T06:45:39.363Z"
+   "updated_at": "2026-11-19T07:05:41.937Z"
   },
   "checklist_problems": [],
   "history": [
    {
     "state": "not_started",
-    "ms": 1795070739357,
-    "ts": "2026-11-19T06:45:39.357Z",
+    "ms": 1795071941931,
+    "ts": "2026-11-19T07:05:41.931Z",
     "note": "created"
    },
    {
     "state": "ready",
-    "ms": 1795070739363,
-    "ts": "2026-11-19T06:45:39.363Z",
+    "ms": 1795071941937,
+    "ts": "2026-11-19T07:05:41.937Z",
     "note": "checklist complete; device sim-esp32-01"
    },
    {
     "state": "running",
-    "ms": 1795070434000,
-    "ts": "2026-11-19T06:40:34.000Z",
+    "ms": 1795071636000,
+    "ts": "2026-11-19T07:00:36.000Z",
     "note": null
    },
    {
     "state": "completed",
-    "ms": 1795070589000,
-    "ts": "2026-11-19T06:43:09.000Z",
+    "ms": 1795071791000,
+    "ts": "2026-11-19T07:03:11.000Z",
     "note": null
    }
   ],
@@ -2030,7 +2030,7 @@
   },
   "hardware_state": {
    "description": "load current 0.450 A measured: a load appears to be connected",
-   "last_reading_ts": "2026-11-19T06:45:29.000Z",
+   "last_reading_ts": "2026-11-19T07:05:31.000Z",
    "battery_selected_on": "sim-esp32-01"
   },
   "hardware_notice": "Software test state only. This did not connect, disconnect or switch the battery or the load, and there is no automatic voltage cutoff or battery protection.",
@@ -2043,9 +2043,9 @@
   "battery_id": "SIM-BAT-A-3000",
   "device_id": "sim-esp32-01",
   "state": "completed",
-  "created_at": "2026-11-19T06:45:37.321Z",
-  "started_at": "2026-11-16T17:21:52.000Z",
-  "ended_at": "2026-11-16T18:00:02.000Z",
+  "created_at": "2026-11-19T07:05:39.964Z",
+  "started_at": "2026-11-16T17:41:54.000Z",
+  "ended_at": "2026-11-16T18:20:04.000Z",
   "notes": "SIMULATION",
   "abort_reason": null,
   "checklist": {
@@ -2058,32 +2058,32 @@
    "cutoff_v": 3.0,
    "load_resistance_ohm": 8.0,
    "load_power_rating_w": 5.0,
-   "updated_at": "2026-11-19T06:45:37.328Z"
+   "updated_at": "2026-11-19T07:05:39.970Z"
   },
   "checklist_problems": [],
   "history": [
    {
     "state": "not_started",
-    "ms": 1795070737321,
-    "ts": "2026-11-19T06:45:37.321Z",
+    "ms": 1795071939964,
+    "ts": "2026-11-19T07:05:39.964Z",
     "note": "created"
    },
    {
     "state": "ready",
-    "ms": 1795070737328,
-    "ts": "2026-11-19T06:45:37.328Z",
+    "ms": 1795071939970,
+    "ts": "2026-11-19T07:05:39.970Z",
     "note": "checklist complete; device sim-esp32-01"
    },
    {
     "state": "running",
-    "ms": 1794849712000,
-    "ts": "2026-11-16T17:21:52.000Z",
+    "ms": 1794850914000,
+    "ts": "2026-11-16T17:41:54.000Z",
     "note": null
    },
    {
     "state": "completed",
-    "ms": 1794852002000,
-    "ts": "2026-11-16T18:00:02.000Z",
+    "ms": 1794853204000,
+    "ts": "2026-11-16T18:20:04.000Z",
     "note": null
    }
   ],
@@ -2107,13 +2107,13 @@
    "delivered_wh": 0.778055555555553,
    "gaps": [
     {
-     "from": "2026-11-16T17:32:37.000Z",
-     "to": "2026-11-16T17:34:12.000Z",
+     "from": "2026-11-16T17:52:39.000Z",
+     "to": "2026-11-16T17:54:14.000Z",
      "duration_s": 95.0
     },
     {
-     "from": "2026-11-16T17:44:12.000Z",
-     "to": "2026-11-16T17:54:17.000Z",
+     "from": "2026-11-16T18:04:14.000Z",
+     "to": "2026-11-16T18:14:19.000Z",
      "duration_s": 605.0
     }
    ],
@@ -2182,7 +2182,7 @@
   },
   "hardware_state": {
    "description": "load current 0.450 A measured: a load appears to be connected",
-   "last_reading_ts": "2026-11-19T06:45:29.000Z",
+   "last_reading_ts": "2026-11-19T07:05:31.000Z",
    "battery_selected_on": "sim-esp32-01"
   },
   "hardware_notice": "Software test state only. This did not connect, disconnect or switch the battery or the load, and there is no automatic voltage cutoff or battery protection.",
@@ -2195,9 +2195,9 @@
   "battery_id": "SIM-BAT-C-2500",
   "device_id": "sim-esp32-01",
   "state": "completed",
-  "created_at": "2026-11-19T06:45:23.723Z",
-  "started_at": "2026-11-16T07:57:32.000Z",
-  "ended_at": "2026-11-16T10:03:52.000Z",
+  "created_at": "2026-11-19T07:05:25.637Z",
+  "started_at": "2026-11-16T08:17:34.000Z",
+  "ended_at": "2026-11-16T10:23:54.000Z",
   "notes": "SIMULATION",
   "abort_reason": null,
   "checklist": {
@@ -2210,32 +2210,32 @@
    "cutoff_v": 3.0,
    "load_resistance_ohm": 3.0,
    "load_power_rating_w": 10.0,
-   "updated_at": "2026-11-19T06:45:23.729Z"
+   "updated_at": "2026-11-19T07:05:25.644Z"
   },
   "checklist_problems": [],
   "history": [
    {
     "state": "not_started",
-    "ms": 1795070723723,
-    "ts": "2026-11-19T06:45:23.723Z",
+    "ms": 1795071925637,
+    "ts": "2026-11-19T07:05:25.637Z",
     "note": "created"
    },
    {
     "state": "ready",
-    "ms": 1795070723729,
-    "ts": "2026-11-19T06:45:23.729Z",
+    "ms": 1795071925644,
+    "ts": "2026-11-19T07:05:25.644Z",
     "note": "checklist complete; device sim-esp32-01"
    },
    {
     "state": "running",
-    "ms": 1794815852000,
-    "ts": "2026-11-16T07:57:32.000Z",
+    "ms": 1794817054000,
+    "ts": "2026-11-16T08:17:34.000Z",
     "note": null
    },
    {
     "state": "completed",
-    "ms": 1794823432000,
-    "ts": "2026-11-16T10:03:52.000Z",
+    "ms": 1794824634000,
+    "ts": "2026-11-16T10:23:54.000Z",
     "note": null
    }
   ],
@@ -2323,7 +2323,7 @@
   },
   "hardware_state": {
    "description": "no recent telemetry: physical state unknown",
-   "last_reading_ts": "2026-11-16T14:07:27.000Z",
+   "last_reading_ts": "2026-11-16T14:27:29.000Z",
    "battery_selected_on": null
   },
   "hardware_notice": "Software test state only. This did not connect, disconnect or switch the battery or the load, and there is no automatic voltage cutoff or battery protection.",
@@ -2336,9 +2336,9 @@
   "battery_id": "SIM-BAT-A-3000",
   "device_id": "sim-esp32-01",
   "state": "completed",
-  "created_at": "2026-11-19T06:45:11.441Z",
-  "started_at": "2026-11-16T06:45:16.000Z",
-  "ended_at": "2026-11-16T07:46:47.000Z",
+  "created_at": "2026-11-19T07:05:13.812Z",
+  "started_at": "2026-11-16T07:05:18.000Z",
+  "ended_at": "2026-11-16T08:06:49.000Z",
   "notes": "SIMULATION",
   "abort_reason": null,
   "checklist": {
@@ -2351,32 +2351,32 @@
    "cutoff_v": 3.0,
    "load_resistance_ohm": 4.0,
    "load_power_rating_w": 10.0,
-   "updated_at": "2026-11-19T06:45:11.447Z"
+   "updated_at": "2026-11-19T07:05:13.819Z"
   },
   "checklist_problems": [],
   "history": [
    {
     "state": "not_started",
-    "ms": 1795070711441,
-    "ts": "2026-11-19T06:45:11.441Z",
+    "ms": 1795071913812,
+    "ts": "2026-11-19T07:05:13.812Z",
     "note": "created"
    },
    {
     "state": "ready",
-    "ms": 1795070711447,
-    "ts": "2026-11-19T06:45:11.447Z",
+    "ms": 1795071913819,
+    "ts": "2026-11-19T07:05:13.819Z",
     "note": "checklist complete; device sim-esp32-01"
    },
    {
     "state": "running",
-    "ms": 1794811516000,
-    "ts": "2026-11-16T06:45:16.000Z",
+    "ms": 1794812718000,
+    "ts": "2026-11-16T07:05:18.000Z",
     "note": null
    },
    {
     "state": "completed",
-    "ms": 1794815207000,
-    "ts": "2026-11-16T07:46:47.000Z",
+    "ms": 1794816409000,
+    "ts": "2026-11-16T08:06:49.000Z",
     "note": null
    }
   ],
@@ -2464,7 +2464,7 @@
   },
   "hardware_state": {
    "description": "load current 0.450 A measured: a load appears to be connected",
-   "last_reading_ts": "2026-11-19T06:45:29.000Z",
+   "last_reading_ts": "2026-11-19T07:05:31.000Z",
    "battery_selected_on": "sim-esp32-01"
   },
   "hardware_notice": "Software test state only. This did not connect, disconnect or switch the battery or the load, and there is no automatic voltage cutoff or battery protection.",

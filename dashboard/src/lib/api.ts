@@ -37,7 +37,7 @@ export const apiUrl = (path: string) => BASE + path;
 
 // ------------------------------------------------------------------ types
 export type BatterySource = "hardware" | "simulation" | "nasa_replay";
-export type ConnState = "online" | "stale" | "offline" | "never_seen" | "not_applicable";
+export type ConnState = "online" | "stale" | "offline" | "never_seen" | "not_applicable" | "not_selected";
 export type PredictionStatus = "unavailable" | "experimental" | "nasa_in_sample";
 /** Backend measurement-validity state (iot/backend/presence.py). */
 export type CellState = "no_cell" | "unverified" | "verified_current" | "confirmed" | "unknown";

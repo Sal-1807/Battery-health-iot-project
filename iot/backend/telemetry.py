@@ -235,10 +235,13 @@ def battery_summary(conn: sqlite3.Connection, b: dict, now: datetime, s: Optiona
     sess = conn.execute(f"SELECT {SESSION_COLS} FROM discharge_sessions WHERE battery_id=? ORDER BY id DESC LIMIT 1",
                         (b["battery_id"],)).fetchone()
     session = session_out(sess, s, b.get("cutoff_voltage_v"), b.get("rated_capacity_ah")) if sess else None
+    conn_state = connection_state(last_rx, t.offline_after_s, now) if b["source"] != "nasa_replay" \
+        else {"state": "not_applicable", "age_s": None}
+    if b.get("managed") and battery_assignment(conn, b["battery_id"]) is None:
+        conn_state = {"state": "not_selected", "age_s": conn_state["age_s"]}
     return {
         **b,
-        "connection": connection_state(last_rx, t.offline_after_s, now) if b["source"] != "nasa_replay"
-        else {"state": "not_applicable", "age_s": None},
+        "connection": conn_state,
         "latest_reading": reading_out(last) if last else None,
         "latest_prediction": row_to_dict(pred, pj),
         "latest_valid_prediction": row_to_dict(valid_pred, pj),

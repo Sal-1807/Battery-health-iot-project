@@ -195,3 +195,7 @@ Migration v7 adds the `battery_tests` table; existing records are unchanged.
 ## 15. End-to-end simulation — added 2026-11-19
 
 `python -m iot.simulation.run` produces synthetic INA219/DS18B20 telemetry and runs it through the real API, using a separate simulation database and SIM-* profiles. It runs 52 verification checks. Details: docs/SIMULATION.md.
+
+## 16. Pre-hardware readiness audit — 2026-11-19
+
+Seven defects were found and fixed: database/mode isolation, no SoH on legacy hardware IDs, false offline alerts after a switch, reversed-current reporting, and device-ID mismatch warning. The checklist is in [READINESS.md](READINESS.md). Physical discharge remains **BLOCKED** on the protection hardware (HARDWARE_SETUP §5).

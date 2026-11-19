@@ -76,3 +76,15 @@ describe("Batteries page", () => {
     expect(select).toHaveBeenCalledWith("BAT-C-2500", "history");
   });
 });
+
+describe("Batteries page readiness", () => {
+  it("warns when the selected device has never reported", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.includes("/compare") ? { batteries: rows, note: "" } : { devices: [] };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    render(<Batteries selectBattery={() => {}} />);
+    await screen.findByText(/has not sent any reading yet/);
+  });
+});

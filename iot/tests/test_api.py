@@ -237,23 +237,41 @@ def test_database_error_returns_503(client, monkeypatch):
 
 
 # ------------------------------------------------------------------ cycles
-def _discharge(client, battery, start, n, i_a, v0, v1, t0, t1, seq0=0, step_s=10, rest=8):
+def _discharge(client, battery, start, n, i_a, v0, v1, t0, t1, seq0=0, step_s=10, rest=8, source="hardware"):
     """Post a discharge of n samples followed by `rest` rest samples."""
     rows = []
     for k in range(n):
         f = k / (n - 1)
         rows.append(reading(battery=battery, ts=start + timedelta(seconds=step_s * k), v=v0 + (v1 - v0) * f,
-                            i=i_a, t=t0 + (t1 - t0) * f, seq=seq0 + k, boot_id="cyc"))
+                            i=i_a, t=t0 + (t1 - t0) * f, seq=seq0 + k, boot_id="cyc", source=source))
     for k in range(rest):
         rows.append(reading(battery=battery, ts=start + timedelta(seconds=step_s * (n + k)), v=v1 + 0.3, i=0.0,
-                            t=t1, seq=seq0 + n + k, boot_id="cyc"))
+                            t=t1, seq=seq0 + n + k, boot_id="cyc", source=source))
     return client.post("/api/battery/readings", json={"readings": rows}).json()
 
 
 @needs_models
+def test_hardware_battery_never_gets_soh_rul(client):
+    """Real hardware cells (including legacy IDs such as CELL-18650-01) get no NASA SoH/RUL."""
+    client.post("/api/battery/reading", json=reading(battery="CELL-18650-01", ts=past(7200), v=4.19, i=0.0, t=24.0,
+                                                     seq=0, boot_id="hw"))
+    client.put("/api/battery/CELL-18650-01", json={"cycle_count_offset": 20, "rated_capacity_ah": 2.0,
+                                                   "cutoff_voltage_v": 2.7})
+    start = datetime.now(timezone.utc) - timedelta(minutes=90)
+    out = _discharge(client, "CELL-18650-01", start, 120, 1.9, 4.19, 2.7, 24.5, 39.0, seq0=1, step_s=20)
+    closed = [c for r in out["results"] for c in r["cycles_closed"]]
+    assert closed and closed[0]["complete"]                       # same NASA-like cycle that passes the model gate
+    assert closed[0]["prediction"]["status"] == "unavailable"
+    assert "not been validated on these cells" in closed[0]["prediction"]["reasons"][0]
+    assert client.get("/api/battery/CELL-18650-01").json()["latest_valid_prediction"] is None
+
+
 def test_resistor_discharge_aggregates_but_prediction_unavailable(client):
+    # synthetic (simulation-source) battery, so the model's own gate is what refuses it
     start = datetime.now(timezone.utc) - timedelta(hours=2)
-    out = _discharge(client, "HW-1", start, 60, 0.37, 3.95, 2.98, 25.0, 25.6)
+    client.post("/api/battery/reading", json=reading(battery="HW-1", ts=start - timedelta(seconds=30), v=3.95,
+                                                     i=0.0, seq=999, boot_id="pre", source="simulation"))
+    out = _discharge(client, "HW-1", start, 60, 0.37, 3.95, 2.98, 25.0, 25.6, source="simulation")
     closed = [c for r in out["results"] for c in r["cycles_closed"]]
     assert len(closed) == 1 and closed[0]["complete"] is True
     pred = closed[0]["prediction"]
@@ -283,12 +301,13 @@ def test_partial_discharge_is_incomplete(client):
 
 @needs_models
 def test_nasa_like_live_cycle_gets_experimental_prediction(client):
+    # synthetic battery: the gate itself is under test (real hardware never gets SoH/RUL, see above)
     client.post("/api/battery/reading", json=reading(battery="LAB-2A", ts=past(7200), v=4.19, i=0.0, t=24.0,
-                                                     seq=0, boot_id="x"))
+                                                     seq=0, boot_id="x", source="simulation"))
     client.put("/api/battery/LAB-2A", json={"cycle_count_offset": 20, "rated_capacity_ah": 2.0,
                                             "cutoff_voltage_v": 2.7})
     start = datetime.now(timezone.utc) - timedelta(minutes=90)
-    out = _discharge(client, "LAB-2A", start, 120, 1.9, 4.19, 2.7, 24.5, 39.0, seq0=1, step_s=20)
+    out = _discharge(client, "LAB-2A", start, 120, 1.9, 4.19, 2.7, 24.5, 39.0, seq0=1, step_s=20, source="simulation")
     closed = [c for r in out["results"] for c in r["cycles_closed"]]
     assert len(closed) == 1 and closed[0]["complete"]
     assert closed[0]["prediction"]["status"] == "experimental", closed[0]["prediction"]

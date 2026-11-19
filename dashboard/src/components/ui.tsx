@@ -73,6 +73,7 @@ export function ConnectionPill({ state, age }: { state: ConnState; age?: string 
     offline: ["critical", <WifiOff size={12} />, "Offline"],
     never_seen: ["neutral", <CircleDashed size={12} />, "No data yet"],
     not_applicable: ["neutral", <Info size={12} />, "Replay (no device)"],
+    not_selected: ["neutral", <CircleDashed size={12} />, "Not selected as connected"],
   };
   const [tone, icon, label] = map[state];
   return (

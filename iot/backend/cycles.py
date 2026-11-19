@@ -114,11 +114,12 @@ def _assess(seg: _Segment, feats, s: Settings, cutoff_v: float) -> list[str]:
 
 def store_prediction(conn: sqlite3.Connection, models: ModelService, battery: dict, cycle: dict,
                      data_source: str) -> dict:
-    if battery.get("managed"):
-        # Real physical cells: the NASA 2.0 Ah models have not been validated on them,
-        # so no SoH/RUL is produced regardless of how the features look.
+    if battery.get("managed") or battery.get("source") == "hardware":
+        # Real physical cells (profiles AND legacy hardware IDs such as CELL-18650-01) and
+        # simulated profiles: the NASA 2.0 Ah models have not been validated on them, so no
+        # SoH/RUL is produced regardless of how the features look.
         res = PredictionResult(status="unavailable", model_version=models.version, reasons=[
-            "SoH/RUL is not produced for physical battery profiles: the NASA-trained models have not been "
+            "SoH/RUL is not produced for physical batteries: the NASA-trained models have not been "
             "validated on these cells. The NASA demonstration remains available under NASA replay."])
     else:
         res = models.predict_cycle(cycle, data_source=data_source, rated_capacity_ah=battery.get("rated_capacity_ah"))

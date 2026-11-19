@@ -18,7 +18,8 @@ function ConnectedBattery({ profiles, onChanged }: { profiles: CompareRow[]; onC
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const deviceId = device || list[0]?.device_id || DEFAULT_DEVICE;
-  const current = list.find((d) => d.device_id === deviceId)?.assignment ?? null;
+  const dev = list.find((d) => d.device_id === deviceId);
+  const current = dev?.assignment ?? null;
   useEffect(() => setTarget(current?.battery_id ?? ""), [current?.battery_id, deviceId]);
 
   const doSwitch = async () => {
@@ -110,6 +111,12 @@ function ConnectedBattery({ profiles, onChanged }: { profiles: CompareRow[]; onC
         Currently selected on {deviceId}:{" "}
         <span className="text-ink">{current ? `${current.battery_id} (since ${fmtTime(current.start_ts, true)})` : "none"}</span>
       </p>
+      {!dev?.last_seen_at && (
+        <p className="mt-2 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-xs text-ink-2">
+          Device <span className="text-ink">{deviceId}</span> has not sent any reading yet. Check that DEVICE_ID in the
+          firmware's config.h matches, or readings will not be recorded to the battery you select here.
+        </p>
+      )}
       {arming && (
         <p className="mt-2 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-xs leading-relaxed text-ink-2">
           Switching ends the current recording session{current ? ` for ${current.battery_id}` : ""} and starts recording to{" "}

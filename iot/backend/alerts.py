@@ -172,6 +172,26 @@ def evaluate_prediction(conn: sqlite3.Connection, battery_id: str, status: str, 
         _clear(conn, battery_id, "soh_low")
 
 
+def _device_targets(conn: sqlite3.Connection) -> dict[str, str]:
+    """battery each device is currently recording to: its active assignment, the
+    UNASSIGNED bucket if it was ever assigned, else (legacy) its latest battery."""
+    from .assignments import UNASSIGNED_PREFIX, active_assignment
+    out = {}
+    for d in conn.execute("SELECT device_id FROM devices").fetchall():
+        dev = d["device_id"]
+        a = active_assignment(conn, dev)
+        if a:
+            out[dev] = a["battery_id"]
+        elif conn.execute("SELECT 1 FROM device_assignments WHERE device_id=? LIMIT 1", (dev,)).fetchone():
+            out[dev] = UNASSIGNED_PREFIX + dev
+        else:
+            last = conn.execute("SELECT battery_id FROM readings WHERE device_id=? ORDER BY ts_ms DESC LIMIT 1",
+                                (dev,)).fetchone()
+            if last:
+                out[dev] = last["battery_id"]
+    return out
+
+
 def refresh_offline(db: Database, settings=None) -> None:
     """Raise/clear device_offline for hardware/simulation batteries based on last-seen time,
     and end discharge sessions whose device has gone silent."""
@@ -184,8 +204,13 @@ def refresh_offline(db: Database, settings=None) -> None:
         rows = conn.execute(
             "SELECT b.battery_id, MAX(r.id) AS last_id FROM batteries b JOIN readings r ON r.battery_id=b.battery_id "
             "WHERE b.source IN ('hardware','simulation') GROUP BY b.battery_id").fetchall()
+        targets = _device_targets(conn)
         for row in rows:
             last = conn.execute("SELECT received_at, device_id FROM readings WHERE id=?", (row["last_id"],)).fetchone()
+            if targets.get(last["device_id"]) != row["battery_id"]:
+                # the device has moved on to another battery: this one is not "offline", just not selected
+                _clear(conn, row["battery_id"], "device_offline")
+                continue
             received_ms = int(datetime.fromisoformat(last["received_at"].replace("Z", "+00:00")).timestamp() * 1000)
             age_s = (now_ms - received_ms) / 1000
             if age_s > t.offline_after_s:

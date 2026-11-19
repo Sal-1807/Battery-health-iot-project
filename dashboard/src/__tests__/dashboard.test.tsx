@@ -220,3 +220,12 @@ describe("discharge session panel", () => {
     expect(screen.getByText(/No discharge recorded/)).toBeTruthy();
   });
 });
+
+describe("readiness: unselected profile", () => {
+  it("shows a switched-away profile as not selected rather than offline", () => {
+    const b = { ...base, managed: 1, connection: { state: "not_selected" as const, age_s: 900 }, assignment: null };
+    render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
+    expect(screen.getByText(/Not selected as connected/)).toBeTruthy();
+    expect(screen.queryByText(/Offline/)).toBeNull();
+  });
+});

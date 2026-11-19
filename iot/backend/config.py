@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_DB_PATH = REPO_ROOT / "iot" / "data" / "telemetry.db"      # production database
 
 
 def _env(name: str, default: str) -> str:
@@ -19,7 +20,7 @@ class Settings:
     # "production" (default) or "simulation". Simulation mode serves a separate
     # simulation database with SIM-* profiles and refuses hardware telemetry.
     mode: str = field(default_factory=lambda: _env("MODE", "production").strip().lower())
-    db_path: Path = field(default_factory=lambda: Path(_env("DB_PATH", str(REPO_ROOT / "iot" / "data" / "telemetry.db"))))
+    db_path: Path = field(default_factory=lambda: Path(_env("DB_PATH", str(DEFAULT_DB_PATH))))
     model_dir: Path = field(default_factory=lambda: Path(_env("MODEL_DIR", str(REPO_ROOT / "models"))))
     features_csv: Path = field(default_factory=lambda: Path(_env(
         "FEATURES_CSV", str(REPO_ROOT / "data" / "processed" / "battery_health_features.csv"))))

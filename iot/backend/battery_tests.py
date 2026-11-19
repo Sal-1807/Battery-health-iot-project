@@ -363,6 +363,9 @@ def test_view(conn: sqlite3.Connection, t: dict, s: Settings) -> dict:
         hw = "no recent telemetry: physical state unknown"
     elif last["current_a"] is not None and last["current_a"] >= s.session_on_a:
         hw = f"load current {last['current_a']:.3f} A measured: a load appears to be connected"
+    elif last["current_a"] is not None and last["current_a"] <= -s.session_on_a:
+        hw = (f"current {last['current_a']:.3f} A measured (negative): something is connected - check whether "
+              "INA219 VIN+/VIN- are reversed; negative current is not counted as discharge")
     else:
         hw = "no load current measured"
     return {
