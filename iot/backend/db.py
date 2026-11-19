@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS batteries (
@@ -243,8 +243,28 @@ VALUES
 UPDATE batteries SET managed=1 WHERE battery_id IN ('BAT-A-3000','BAT-B-3000','BAT-C-2500');
 """
 
+# v7: Battery Test Manager records (battery_tests.py). New table only.
+_SCHEMA_V7 = """
+CREATE TABLE IF NOT EXISTS battery_tests (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    test_uid      TEXT NOT NULL UNIQUE,
+    battery_id    TEXT NOT NULL,
+    device_id     TEXT,
+    state         TEXT NOT NULL,      -- not_started | ready | running | paused | completed | aborted (software only)
+    created_at    TEXT NOT NULL,
+    started_ms    INTEGER,
+    ended_ms      INTEGER,
+    notes         TEXT,
+    abort_reason  TEXT,
+    checklist     TEXT NOT NULL DEFAULT '{}',
+    history       TEXT NOT NULL DEFAULT '[]',
+    final_results TEXT                -- frozen results at complete/abort
+);
+CREATE INDEX IF NOT EXISTS ix_tests_battery ON battery_tests(battery_id, id);
+"""
+
 _MIGRATIONS: dict[int, str] = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4, 5: _SCHEMA_V5,
-                               6: _SCHEMA_V6}
+                               6: _SCHEMA_V6, 7: _SCHEMA_V7}
 
 
 class Database:

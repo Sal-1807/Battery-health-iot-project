@@ -435,6 +435,35 @@ export interface AgingRules {
   min_trend_points: number; full_test: string;
 }
 
+export type TestState = "not_started" | "ready" | "running" | "paused" | "completed" | "aborted";
+export interface TestChecklist {
+  battery_identity_confirmed: boolean; load_rating_verified: boolean; supervisor_approval: boolean;
+  disconnect_procedure_confirmed: boolean; voltage_cutoff_confirmed: boolean;
+  supervisor_name: string | null; cutoff_v: number | null; load_resistance_ohm: number | null; load_power_rating_w: number | null;
+}
+export interface TestResults {
+  available: boolean; reason?: string;
+  elapsed_s?: number; load_on_s?: number; n_readings?: number;
+  initial_voltage_v?: number | null; initial_current_a?: number | null; final_voltage_v?: number | null;
+  min_loaded_voltage_v?: number | null; mean_current_a?: number | null; peak_current_a?: number | null;
+  mean_power_w?: number | null; peak_power_w?: number | null; initial_temperature_c?: number | null;
+  max_temperature_c?: number | null; final_temperature_c?: number | null; delivered_mah?: number; delivered_wh?: number;
+  gaps?: { from: string; to: string; duration_s: number; note?: string }[];
+  missing_measurements?: { voltage_v: number; current_a: number; temperature_c: number; readings_with_any_missing: number };
+  paused?: boolean; load_current_while_paused_readings?: number; battery_stayed_selected?: boolean;
+  last_reading_age_s?: number | null;
+}
+export interface BatteryTest {
+  test_uid: string; battery_id: string; device_id: string | null; state: TestState; created_at: string;
+  started_at: string | null; ended_at: string | null; notes: string | null; abort_reason: string | null;
+  checklist: Partial<TestChecklist>; checklist_problems: string[];
+  history: { state: TestState; ts: string; note: string | null }[];
+  results: TestResults; results_frozen: boolean;
+  validity: { valid_for_full_capacity: boolean; classification: string; checks: { check: string; ok: boolean; detail: string }[] };
+  hardware_state: { description: string; last_reading_ts: string | null; battery_selected_on: string | null };
+  hardware_notice: string; disconnect_warning: string; soh: string; rul: string;
+}
+
 // ------------------------------------------------------------------ calls
 const q = (params: Record<string, string | number | undefined | null>) => {
   const s = new URLSearchParams();
@@ -479,6 +508,18 @@ export const api = {
   saveThresholds: (t: Thresholds) =>
     request<Thresholds>("/api/settings/thresholds", { method: "PUT", body: JSON.stringify(t) }),
   models: () => request<ModelInfo>("/api/models"),
+  tests: (batteryId?: string) => request<{ tests: BatteryTest[] }>(`/api/tests${q({ battery_id: batteryId })}`),
+  test: (uid: string) => request<BatteryTest>(`/api/tests/${enc(uid)}`),
+  createTest: (batteryId: string, notes?: string) =>
+    request<{ test_uid: string }>("/api/tests", { method: "POST", body: JSON.stringify({ battery_id: batteryId, notes: notes || null }) }),
+  saveChecklist: (uid: string, c: Partial<TestChecklist>) =>
+    request<{ state: TestState; checklist_problems: string[] }>(`/api/tests/${enc(uid)}/checklist`, { method: "PUT", body: JSON.stringify(c) }),
+  testAction: (uid: string, action: "start" | "pause" | "resume" | "complete" | "abort", reason?: string) =>
+    request<{ state: TestState; hardware_notice: string; warning?: string }>(`/api/tests/${enc(uid)}/${action}`, {
+      method: "POST", body: JSON.stringify({ reason: reason || null }),
+    }),
+  testsCsvUrl: (batteryId?: string) => apiUrl(`/api/tests/export.csv${q({ battery_id: batteryId })}`),
+  testReadingsCsvUrl: (uid: string) => apiUrl(`/api/tests/${enc(uid)}/readings.csv`),
   aging: () => request<{ batteries: Aging[]; rules: AgingRules }>("/api/aging"),
   agingDetail: (id: string) => request<Aging & { rules: AgingRules }>(`/api/aging/${enc(id)}`),
   mlValidation: () => request<MlSummary>("/api/ml-validation"),

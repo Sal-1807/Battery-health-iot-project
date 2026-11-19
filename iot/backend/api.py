@@ -23,11 +23,12 @@ from .config import Settings, get_settings
 from .cycles import aggregate_live_cycles, insert_cycle_features, store_prediction
 from .db import Database, row_to_dict
 from .model_service import ModelService
-from . import aging, ml_validation
+from . import aging, battery_tests, ml_validation
 from .nasa import NasaData
 from .sessions import SESSION_COLS, battery_stats, session_out
 from .assignments import active_assignment, battery_assignment, switch_assignment
 from .presence import Presence, load_presence, plausible, reclassify_history, save_presence
+from .schemas import TestAction, TestChecklist, TestCreate
 from .schemas import BatteryUpsert, CycleIn, DeviceAssignmentIn, PresenceIn, ReadingBatchIn, ReadingIn, Thresholds
 from .telemetry import battery_summary, ensure_battery, history, ingest, parse_iso
 
@@ -382,6 +383,72 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.get("/api/models", tags=["models"])
     def model_info():
         return {**models.info(), "lobo": nasa.metrics()}
+
+    # ------------------------------------------------------------ battery test manager (records only)
+    @app.post("/api/tests", tags=["tests"])
+    def create_test(body: TestCreate):
+        with db.write() as conn:
+            return battery_tests.create_test(conn, body.battery_id, body.notes)
+
+    @app.get("/api/tests", tags=["tests"])
+    def list_tests(battery_id: Optional[str] = None, state: Optional[str] = None):
+        where, args = [], []
+        if battery_id:
+            where.append("battery_id=?"); args.append(battery_id)
+        if state:
+            where.append("state=?"); args.append(state)
+        q = "SELECT test_uid FROM battery_tests" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC"
+        with db.read() as conn:
+            uids = [r["test_uid"] for r in conn.execute(q, args).fetchall()]
+            views = [battery_tests.test_view(conn, battery_tests._load(conn, u), s) for u in uids]
+        return {"tests": views, "hardware_notice": battery_tests.HARDWARE_NOTICE}
+
+    @app.get("/api/tests/export.csv", tags=["tests"])
+    def export_tests(battery_id: Optional[str] = None):
+        data = list_tests(battery_id)["tests"]
+        name = f"battery_tests_{battery_id or 'all'}.csv"
+        return StreamingResponse(iter([battery_tests.tests_csv(data)]), media_type="text/csv",
+                                 headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @app.get("/api/tests/{uid}", tags=["tests"])
+    def get_test(uid: str):
+        with db.read() as conn:
+            return battery_tests.test_view(conn, battery_tests._load(conn, uid), s)
+
+    @app.get("/api/tests/{uid}/readings.csv", tags=["tests"])
+    def test_readings_csv(uid: str):
+        with db.read() as conn:
+            t = battery_tests._load(conn, uid)
+            if t["started_ms"] is None:
+                raise HTTPException(409, "test has not started")
+            end = t["ended_ms"] or int(datetime.now(timezone.utc).timestamp() * 1000)
+            wins = battery_tests.running_intervals(t, end)
+            rows = conn.execute("SELECT ts, ts_ms, device_id, voltage_v, current_a, power_w, temperature_c, cell_state, "
+                                "flags FROM readings WHERE battery_id=? AND ts_ms BETWEEN ? AND ? ORDER BY ts_ms",
+                                (t["battery_id"], t["started_ms"], end)).fetchall()
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["test_uid", "battery_id", "ts", "test_running", "device_id", "voltage_v", "current_a", "power_w",
+                    "temperature_c", "cell_state", "flags"])
+        for r in rows:
+            running = any(a <= r["ts_ms"] <= b for a, b in wins)
+            w.writerow([uid, t["battery_id"], r["ts"], running, r["device_id"], r["voltage_v"], r["current_a"],
+                        r["power_w"], r["temperature_c"], r["cell_state"], r["flags"]])
+        return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+                                 headers={"Content-Disposition": f'attachment; filename="{uid}_readings.csv"'})
+
+    @app.put("/api/tests/{uid}/checklist", tags=["tests"])
+    def put_checklist(uid: str, body: TestChecklist):
+        with db.write() as conn:
+            out = battery_tests.update_checklist(conn, uid, body.model_dump())
+        return {**out, "hardware_notice": battery_tests.HARDWARE_NOTICE}
+
+    @app.post("/api/tests/{uid}/{action}", tags=["tests"])
+    def test_action(uid: str, action: Literal["start", "pause", "resume", "complete", "abort"],
+                    body: Optional[TestAction] = None):
+        """Change the SOFTWARE test state. Does not connect, disconnect or control any hardware."""
+        with db.write() as conn:
+            return battery_tests.transition(conn, uid, action, body.reason if body else None, s)
 
     # ------------------------------------------------------------ aging analytics (physical batteries)
     @app.get("/api/aging", tags=["aging"])

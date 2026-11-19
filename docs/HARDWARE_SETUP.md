@@ -98,6 +98,15 @@ The firmware's `BATTERY_ID` is fixed in `config.h` and can't know which cell is 
 
 From the moment of the switch, readings are stored under the selected battery. If no battery is selected, readings go to `UNASSIGNED-<device>` and are never attributed to a profile.
 
+## 3c. Recording a supervised test (Test Manager)
+
+1. On the **Batteries** page, select the connected cell.
+2. On the **Test Manager** page, create a test and complete the checklist. You'll need the supervisor's name, the cutoff voltage, and the load resistance with its power rating.
+3. Physically connect the load, then press **Start test record**. Pressing the button doesn't connect anything.
+4. Watch the cell voltage and temperature yourself. **Physically disconnect the load** at the agreed cutoff or on any abnormal reading, then press **Complete** or **Abort**.
+
+The software never switches the load and has no automatic cutoff. A test only counts for full-capacity analysis if every validity check passes.
+
 ## 3a. Without Wi-Fi: USB serial bridge
 
 Use this when the ESP32 cannot join a network. For example, campus Wi-Fi that uses

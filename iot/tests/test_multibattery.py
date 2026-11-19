@@ -271,7 +271,8 @@ def test_v5_database_migrates_and_keeps_history_unchanged(tmp_path, settings):
 
     c = TestClient(create_app(dataclasses.replace(settings, db_path=path)))
     con = sqlite3.connect(path)
-    assert con.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == 6
+    from iot.backend.db import SCHEMA_VERSION
+    assert con.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == SCHEMA_VERSION
     # history intact and NOT re-attributed to any profile
     assert c.get("/api/battery/CELL-18650-01/history").json()["total"] == 20
     assert con.execute("SELECT COUNT(*) FROM readings WHERE battery_id LIKE 'BAT-%'").fetchone()[0] == 0

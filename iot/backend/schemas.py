@@ -188,3 +188,28 @@ class DeviceAssignmentIn(BaseModel):
 
     battery_id: Optional[str] = Field(default=None, pattern=ID_PATTERN)
     note: Optional[str] = Field(default=None, max_length=200)
+
+
+class TestCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    battery_id: str = Field(pattern=ID_PATTERN)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class TestChecklist(BaseModel):
+    """Operator confirmations. They are records of what a person checked, not hardware controls."""
+    model_config = ConfigDict(extra="forbid")
+    battery_identity_confirmed: bool = False
+    load_rating_verified: bool = False
+    supervisor_approval: bool = False
+    disconnect_procedure_confirmed: bool = False
+    voltage_cutoff_confirmed: bool = False
+    supervisor_name: Optional[str] = Field(default=None, max_length=80)
+    cutoff_v: Optional[float] = Field(default=None, gt=0, le=5)
+    load_resistance_ohm: Optional[float] = Field(default=None, gt=0, le=10000)
+    load_power_rating_w: Optional[float] = Field(default=None, gt=0, le=1000)
+
+
+class TestAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: Optional[str] = Field(default=None, max_length=300)

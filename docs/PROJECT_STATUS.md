@@ -179,3 +179,15 @@ The **Aging analytics** page covers BAT-A, BAT-B and BAT-C:
 - **Comparison table:** across the three batteries, including C-rate.
 - **Exclusions:** each excluded session is listed with its reason.
 - **Without data:** the page shows "Insufficient data" until at least two comparable full tests exist. No such tests have been recorded on real hardware yet.
+
+## 14. Battery Test Manager — added 2026-11-19
+
+The **Test Manager** page records supervised discharge experiments for BAT-A, BAT-B and BAT-C:
+
+- **States:** Not Started, Ready, Running, Paused, Completed, Aborted.
+- **Checklist:** must be complete before a test can start.
+- **Results** come from the battery's own telemetry.
+- **Data-quality and validity checks** are shown for every test, along with full history and CSV export.
+- **Software state only:** test state is shown separately from the measured hardware state. There is no automatic cutoff or protection, and a permanent warning tells the operator to physically disconnect the load.
+
+Migration v7 adds the `battery_tests` table; existing records are unchanged.

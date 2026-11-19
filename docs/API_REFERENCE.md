@@ -251,3 +251,33 @@ How the evaluation models are built:
 **Retention** is each test's measured capacity divided by the battery's **first comparable measured test**. It requires at least 2 comparable tests; otherwise the status is `insufficient_data`. It is not absolute SoH, and the label rating is never used as the reference. SoH and RUL are always `unavailable`.
 
 **Behaviour change.** Sessions that reach the cutoff but end because the battery was switched or telemetry was lost are no longer classified as full range, and so no longer count as completed cycles.
+
+## Battery Test Manager (records only, no hardware control)
+
+| Route | Description |
+|---|---|
+| `POST /api/tests` | `{"battery_id": "BAT-A-3000", "notes": "..."}` creates a test with a unique ID, e.g. `T-20261119-BAT-A-3000-001`. Physical profiles only. |
+| `PUT /api/tests/{uid}/checklist` | Confirmations (identity, load rating, supervisor approval, disconnect procedure, cutoff) plus `supervisor_name`, `cutoff_v` (2.5–3.3 V), `load_resistance_ohm`, `load_power_rating_w`. The test becomes `ready` when complete and the battery is selected on a device. A load rated below its 4.2 V dissipation is refused. |
+| `POST /api/tests/{uid}/start\|pause\|resume\|complete\|abort` | Changes the **software** state only. 409 on an invalid transition, a changed battery selection, or another active test on the same battery or device. Every response includes `hardware_notice`; pause, complete and abort also return `warning` ("Physically disconnect the discharge load now"). |
+| `GET /api/tests?battery_id=&state=` | All tests with results, validity checks and measured hardware state |
+| `GET /api/tests/{uid}` | One test: live results while running, frozen results after completion or abort |
+| `GET /api/tests/export.csv?battery_id=` | One row per test |
+| `GET /api/tests/{uid}/readings.csv` | The battery's readings in the test window, each with a `test_running` flag |
+
+**Results.** Initial and final voltage, minimum loaded voltage, mean and peak current and power, temperatures, delivered mAh and Wh, elapsed and load-on time. They're integrated only inside running intervals, and only between consecutive on-readings ≤ 60 s apart.
+
+**Data-quality flags.** Telemetry gaps (including at the start or end of a window), missing measurements, pauses (and load current measured while paused), and a battery-selection change during the test.
+
+**Valid for full-capacity / cycle analysis.** Only if *all* of these hold:
+
+- the test was completed;
+- the checklist was complete;
+- the cell was rested at ≥ 4.15 V at the start;
+- the cutoff was reached;
+- no gaps;
+- never paused;
+- the battery stayed selected;
+- at most 2 % of readings have a missing value;
+- at least 30 readings.
+
+A completed test that didn't reach the cutoff is classified as `partial discharge (not a full cycle)`. SoH and RUL are always `unavailable`.
