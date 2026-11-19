@@ -1,10 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { PageProps } from "../App";
-import { api, type NasaCycle, type Prediction } from "../lib/api";
+import { api, type Prediction } from "../lib/api";
 import { usePoll } from "../lib/hooks";
-import { fmt } from "../lib/format";
 import { CycleChart } from "../components/charts";
-import { Card, EmptyState, ErrorBox, Loading, Notice, PredictionPill, Segmented, Table } from "../components/ui";
+import { Card, EmptyState, ErrorBox, Loading, Notice, PredictionPill, Table } from "../components/ui";
 
 const S1 = "var(--color-series-1)";
 const S2 = "var(--color-series-2)";
@@ -123,115 +122,6 @@ function BatteryPredictions({ id }: { id: string }) {
   );
 }
 
-function NasaValidation() {
-  const [bat, setBat] = useState<"B0005" | "B0006" | "B0018">("B0005");
-  const cycles = usePoll(() => api.nasaCycles(bat), 0, [bat]);
-  const models = usePoll(() => api.models(), 0, []);
-  const rows: NasaCycle[] = cycles.data?.cycles ?? [];
-  const data = useMemo(
-    () =>
-      rows.map((r) => ({
-        cycle: r.Cycle,
-        soh: r.SoH,
-        soh_lobo: r.SoH_lobo_pred ?? null,
-        rul: r.RUL,
-        rul_lobo: r.RUL_lobo_pred ?? null,
-      })),
-    [rows],
-  );
-  const fold = models.data?.lobo.per_fold?.find((f) => f.test_battery === bat);
-
-  return (
-    <Card
-      title="Validated NASA performance — leave-one-battery-out"
-      subtitle="Each curve is predicted by a model that never saw this battery (trained on the other two)."
-      actions={
-        <Segmented
-          label="NASA battery"
-          value={bat}
-          onChange={setBat}
-          options={[
-            { value: "B0005", label: "B0005" },
-            { value: "B0006", label: "B0006" },
-            { value: "B0018", label: "B0018" },
-          ]}
-        />
-      }
-    >
-      {cycles.error && <ErrorBox message={cycles.error.message} />}
-      {cycles.loading ? (
-        <Loading />
-      ) : (
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            <div>
-              <p className="mb-2 text-xs font-medium text-ink-2">SoH (%)</p>
-              <CycleChart
-                data={data}
-                unit="%"
-                threshold={{ y: 70, label: "EOL 70 %" }}
-                series={[
-                  { key: "soh", label: "Measured", color: S1, digits: 2 },
-                  { key: "soh_lobo", label: "Held-out prediction", color: S2, digits: 2 },
-                ]}
-              />
-            </div>
-            <div>
-              <p className="mb-2 text-xs font-medium text-ink-2">RUL (cycles)</p>
-              <CycleChart
-                data={data}
-                unit="cycles"
-                series={[
-                  { key: "rul", label: "Actual", color: S1, digits: 0 },
-                  { key: "rul_lobo", label: "Held-out prediction", color: S2, digits: 1 },
-                ]}
-              />
-            </div>
-          </div>
-          {fold && (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                ["SoH RMSE", fmt(fold.soh_RMSE, 2, "pp")],
-                ["SoH R²", fmt(fold.soh_R2, 3)],
-                ["EOL recall", fmt(fold.eol_Recall, 2)],
-                ["RUL RMSE", fmt(fold.rul_RMSE, 1, "cycles")],
-              ].map(([k, v]) => (
-                <div key={k} className="rounded-lg border border-line bg-panel-2 px-3 py-2">
-                  <p className="text-[11px] uppercase tracking-wider text-ink-3">{k}</p>
-                  <p className="tabular mt-1 text-lg font-semibold">{v}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          {models.data?.lobo.per_fold && (
-            <Table head={["Held-out", "n", "SoH RMSE", "SoH MAE", "SoH R²", "EOL acc.", "EOL recall", "EOL F1", "RUL RMSE", "RUL MAE", "RUL R²"]}>
-              {models.data.lobo.per_fold.map((f) => (
-                <tr key={f.test_battery} className={f.test_battery === bat ? "bg-accent/5" : ""}>
-                  <td className="px-3 py-1.5 font-medium text-ink">{f.test_battery}</td>
-                  <td className="px-3 py-1.5">{f.n_test}</td>
-                  <td className="px-3 py-1.5">{f.soh_RMSE.toFixed(2)}</td>
-                  <td className="px-3 py-1.5">{f.soh_MAE.toFixed(2)}</td>
-                  <td className="px-3 py-1.5">{f.soh_R2.toFixed(3)}</td>
-                  <td className="px-3 py-1.5">{f.eol_Accuracy.toFixed(3)}</td>
-                  <td className="px-3 py-1.5">{f.eol_Recall.toFixed(2)}</td>
-                  <td className="px-3 py-1.5">{f.eol_F1.toFixed(3)}</td>
-                  <td className="px-3 py-1.5">{f.rul_RMSE.toFixed(1)}</td>
-                  <td className="px-3 py-1.5">{f.rul_MAE.toFixed(1)}</td>
-                  <td className="px-3 py-1.5">{f.rul_R2.toFixed(3)}</td>
-                </tr>
-              ))}
-            </Table>
-          )}
-          <p className="text-xs text-ink-3">
-            Source: results/lobo_cv_results.csv and results/lobo_predictions.csv. B0018 is a known domain-shift case
-            (see results/analysis/b0018_comparison): its held-out EOL recall is 0.
-          </p>
-        </div>
-      )}
-    </Card>
-  );
-}
-
 export default function Health({ battery }: PageProps) {
   return (
     <div className="space-y-6">
@@ -246,7 +136,15 @@ export default function Health({ battery }: PageProps) {
       ) : (
         <EmptyState title="No battery selected" />
       )}
-      <NasaValidation />
+      <Card title="NASA model validation">
+        <p className="text-sm text-ink-2">
+          Held-out (leave-one-cell-out) accuracy of the NASA-trained models, with baselines and EOL analysis, is on the{" "}
+          <a className="text-accent underline" href="#/ml">
+            ML validation
+          </a>{" "}
+          page.
+        </p>
+      </Card>
     </div>
   );
 }

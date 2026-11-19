@@ -152,3 +152,18 @@ Reported by the team from the Serial Monitor:
 - **Cycle counts:** EFC (throughput ÷ own rating) is tracked separately from completed experimental cycles (rested full charge to cutoff, no gaps).
 - **SoH/RUL:** never produced for physical profiles. The NASA replay demonstration is unchanged.
 - **Not covered:** charging is not instrumented (there is no charge-current path through the INA219). A "completed cycle" is therefore inferred from a rested full-charge voltage before the discharge, not from a measured charge.
+
+## 12. NASA ML validation demo — added 2026-11-19
+
+Dashboard page **ML validation** (API `/api/ml-validation`) shows leave-one-cell-out results for B0005, B0006 and B0018:
+
+- The evaluation models reproduce the committed `results/lobo_predictions.csv` exactly.
+- The EOL classifier and the RUL regressor are reported separately, next to the two-stage output.
+- Each cell's observed EOL is shown: cycle 125 for B0005, 109 for B0006 and 97 for B0018.
+
+**Honest result:** simple baselines beat the model on 2 of 3 held-out cells for both SoH and RUL.
+
+- **B0006:** a mean-EOL baseline gets RUL MAE 1.3 cycles against the model's 8.8. This is partly luck, because the training cells' mean EOL (111) lands close to B0006's actual EOL (109).
+- **B0018:** the EOL classifier never fires (recall 0).
+
+Three cells cannot support a robust accuracy claim. The predictions are not validated for the project's 2500 mAh or 3000 mAh cells.

@@ -367,6 +367,41 @@ export interface NasaCycle {
   [feature: string]: string | number | null | undefined;
 }
 
+export interface RegMetrics { n: number; mae: number | null; rmse: number | null }
+export interface ClfMetrics {
+  n: number; accuracy: number; precision: number; recall: number; f1: number;
+  confusion: { tp: number; tn: number; fp: number; fn: number };
+}
+export interface MlFold {
+  cell: string;
+  train_cells: string[];
+  n_cycles: number;
+  eol: { status: "observed" | "censored"; eol_cycle: number | null; last_cycle: number; cycles_after_eol: number | null;
+         predicted_eol_cycle: number | null; note?: string };
+  soh: { model: RegMetrics; baseline: RegMetrics };
+  rul_classifier: ClfMetrics;
+  rul_regressor_pre_eol: { model: RegMetrics; baseline: RegMetrics };
+  rul_two_stage: { model: RegMetrics; baseline: RegMetrics };
+  rul_by_life_stage: { stage: string; n: number; model: RegMetrics; baseline: RegMetrics }[];
+  baseline_definition: { soh: string; rul: string };
+}
+export interface MlSummary {
+  cells: string[];
+  protocol: string;
+  disclaimer: string;
+  eol_threshold_soh_pct: number;
+  eol_definition: string;
+  production_models_note: string;
+  rul_difficulty: string[];
+  folds: Record<string, MlFold>;
+  aggregate: Record<string, { mean: number; std: number } | null>;
+  reproduction: { checked: boolean; matches_committed_lobo_predictions?: boolean; file?: string };
+}
+export interface MlCycle {
+  Cycle: number; SoH: number; SoH_pred: number; SoH_baseline: number; RUL: number | null; RUL_pred: number;
+  RUL_reg_pred: number; RUL_baseline: number | null; Reached_EOL: number; EOL_pred: number; EOL_prob: number;
+}
+
 // ------------------------------------------------------------------ calls
 const q = (params: Record<string, string | number | undefined | null>) => {
   const s = new URLSearchParams();
@@ -411,6 +446,9 @@ export const api = {
   saveThresholds: (t: Thresholds) =>
     request<Thresholds>("/api/settings/thresholds", { method: "PUT", body: JSON.stringify(t) }),
   models: () => request<ModelInfo>("/api/models"),
+  mlValidation: () => request<MlSummary>("/api/ml-validation"),
+  mlValidationCell: (cell: string) =>
+    request<{ cell: string; fold: MlFold; cycles: MlCycle[]; disclaimer: string }>(`/api/ml-validation/${enc(cell)}`),
   nasaBatteries: () => request<{ batteries: NasaBattery[] }>("/api/nasa/batteries"),
   nasaCycles: (id: string) => request<{ cycles: NasaCycle[] }>(`/api/nasa/${enc(id)}/cycles`),
 };

@@ -151,6 +151,7 @@ export function CycleChart({
   height = 260,
   threshold,
   yDomain,
+  markerX,
 }: {
   data: Record<string, unknown>[];
   series: Series[];
@@ -158,6 +159,8 @@ export function CycleChart({
   height?: number;
   threshold?: { y: number; label: string };
   yDomain?: [number | "auto", number | "auto"];
+  /** vertical marker, e.g. the observed EOL cycle */
+  markerX?: { x: number; label: string };
 }) {
   return (
     <div>
@@ -175,6 +178,14 @@ export function CycleChart({
                 strokeDasharray="5 4"
                 strokeWidth={1.5}
                 label={{ value: threshold.label, position: "insideBottomLeft", fill: "var(--color-ink-2)", fontSize: 11 }}
+              />
+            )}
+            {markerX && (
+              <ReferenceLine
+                x={markerX.x}
+                stroke="var(--color-ink-3)"
+                strokeDasharray="3 3"
+                label={{ value: markerX.label, position: "insideTopLeft", fill: "var(--color-ink-2)", fontSize: 11 }}
               />
             )}
             <Tooltip

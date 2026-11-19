@@ -23,6 +23,7 @@ from .config import Settings, get_settings
 from .cycles import aggregate_live_cycles, insert_cycle_features, store_prediction
 from .db import Database, row_to_dict
 from .model_service import ModelService
+from . import ml_validation
 from .nasa import NasaData
 from .sessions import SESSION_COLS, battery_stats, session_out
 from .assignments import active_assignment, battery_assignment, switch_assignment
@@ -381,6 +382,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.get("/api/models", tags=["models"])
     def model_info():
         return {**models.info(), "lobo": nasa.metrics()}
+
+    # ------------------------------------------------------------ NASA ML validation demo
+    @app.get("/api/ml-validation", tags=["ml-validation"])
+    def ml_validation_summary():
+        """Leakage-free leave-one-cell-out evaluation of the NASA SoH/RUL models (demo only)."""
+        return ml_validation.summary(s)
+
+    @app.get("/api/ml-validation/{cell}", tags=["ml-validation"])
+    def ml_validation_cell(cell: str):
+        d = ml_validation.cell_detail(s, cell)
+        if d is None:
+            raise HTTPException(404, f"'{cell}' is not one of {', '.join(ml_validation.CELLS)}")
+        return d
 
     @app.get("/api/nasa/batteries", tags=["nasa"])
     def nasa_batteries():

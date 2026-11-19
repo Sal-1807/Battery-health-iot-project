@@ -217,3 +217,16 @@ Profiles `BAT-A-3000` (3000 mAh), `BAT-B-3000` (3000 mAh) and `BAT-C-2500` (2500
 - **Completed cycles** counts only sessions that ran from a rested full charge (≥ 4.15 V) to the cutoff with no telemetry gaps. A short session never counts as a cycle.
 
 SoH/RUL predictions are always `unavailable` for managed profiles.
+
+## NASA ML validation demo (separate from live hardware)
+
+| Route | Description |
+|---|---|
+| `GET /api/ml-validation` | Leave-one-cell-out results for B0005, B0006 and B0018. Per held-out cell: SoH MAE/RMSE; EOL classifier accuracy, precision, recall, F1 and confusion matrix; RUL regressor alone (pre-EOL cycles) MAE/RMSE; two-stage RUL MAE/RMSE; baselines; RUL error by life stage; observed/censored EOL. Also mean ± std across folds, a reproduction check against `results/lobo_predictions.csv`, the protocol and the disclaimer. |
+| `GET /api/ml-validation/{cell}` | Per-cycle actual, predicted and baseline SoH and RUL for one held-out cell |
+
+How the evaluation models are built:
+
+- They are trained in memory on the two *other* cells, with the team's own `src/train_models.py` functions.
+- The production `models/*.pkl` were trained on all three cells, so they are never used for these metrics.
+- Baselines: SoH uses a line fit of SoH against cycle on the training cells. RUL uses the training cells' mean EOL cycle minus the current cycle.
