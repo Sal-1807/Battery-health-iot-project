@@ -275,3 +275,40 @@ def test_supervised_legacy_tests_are_not_quick_cycles(client):
     act(client, uid, "complete", start + timedelta(seconds=300))
     assert view(client, uid)["quick_test"] is None
     assert client.get("/api/quick-tests?battery_id=BAT-A-3000").json()["batteries"][0]["count"] == 0
+
+
+# ---------------------------------------------------------------- regression: aborted tests never block creation
+def test_aborted_tests_do_not_block_a_new_quick_test(client):
+    """An aborted legacy (supervised, kind NULL) test and an aborted never-started quick test must
+    not disable test creation. Records are kept and the battery assignment is unchanged."""
+    assign(client, "BAT-A-3000", NOW - timedelta(minutes=30))
+    legacy = client.post("/api/tests", json={"battery_id": "BAT-A-3000", "kind": "supervised"}).json()["test_uid"]
+    assert client.put(f"/api/tests/{legacy}/checklist", json=CHECK).json()["state"] == "ready"
+    act(client, legacy, "start", NOW - timedelta(minutes=20))
+    act(client, legacy, "abort", NOW - timedelta(minutes=19), "aborted by operator")
+    with client.app.state.db.write() as conn:            # as stored before migration v8
+        conn.execute("UPDATE battery_tests SET kind=NULL, duration_s=NULL WHERE test_uid=?", (legacy,))
+    unstarted = new_quick(client, "BAT-A-3000")
+    act(client, unstarted, "abort", NOW - timedelta(minutes=10), "created by mistake")
+
+    assert view(client, unstarted)["quick_test"]["needs_disconnect_confirmation"] is False
+    assert client.get("/api/quick-tests").status_code == 200
+    r = client.post("/api/tests", json={"battery_id": "BAT-A-3000"})
+    assert r.status_code == 200, r.text
+    uids = [t["test_uid"] for t in client.get("/api/tests?battery_id=BAT-A-3000").json()["tests"]]
+    assert {legacy, unstarted, r.json()["test_uid"]} <= set(uids)          # every record kept
+    dev = next(d for d in client.get("/api/devices").json()["devices"] if d["device_id"] == DEV)
+    assert dev["assignment"]["battery_id"] == "BAT-A-3000"
+
+
+def test_aborted_started_quick_test_still_requires_disconnect_confirmation(client):
+    """Safety rule unchanged: aborting a started quick test leaves the load possibly connected."""
+    start = NOW - timedelta(seconds=200)
+    assign(client, "BAT-B-3000", start - timedelta(minutes=1))
+    uid = new_quick(client, "BAT-B-3000")
+    act(client, uid, "start", start)
+    act(client, uid, "abort", start + timedelta(seconds=60), "aborted by operator")
+    assert view(client, uid)["quick_test"]["needs_disconnect_confirmation"] is True
+    assert client.post("/api/tests", json={"battery_id": "BAT-B-3000"}).status_code == 409
+    confirm(client, uid)
+    assert client.post("/api/tests", json={"battery_id": "BAT-B-3000"}).status_code == 200

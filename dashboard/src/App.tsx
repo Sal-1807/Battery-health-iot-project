@@ -160,15 +160,15 @@ export default function App() {
         )}
         {page === "overview" && <Overview {...props} />}
         {page === "batteries" && <Batteries {...props} />}
-        {page === "tests" && <TestManager />}
+        {page === "tests" && <TestManager {...props} />}
         {page === "analysis" && <Aging {...props} />}
         {page === "ml" && <MLValidation />}
       </main>
 
       <footer className="mx-auto max-w-7xl px-4 pb-8 pt-2 text-[11px] text-ink-3 sm:px-6">
-        Software monitoring only: alerts, buttons and the Quick Test timer cannot disconnect the battery or the load. SoH and
-        RUL are not produced for the physical batteries because no validated model exists for them; the NASA model is shown
-        as a separate demonstration.
+        Software monitoring only: alerts, buttons and the Quick Test timer cannot disconnect the battery or the load. No validated
+        SoH or RUL model exists for the physical batteries: at most a gated Experimental ML Estimate is shown, and the NASA
+        model demonstration is kept separate.
       </footer>
     </div>
   );

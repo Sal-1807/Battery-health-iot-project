@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import TestManager from "../pages/TestManager";
-import type { BatteryTest, QuickOverview, TestState } from "../lib/api";
+import TestManager, { createBlockedReason } from "../pages/TestManager";
+import type { BatterySummary, BatteryTest, QuickOverview, TestState } from "../lib/api";
 
 beforeAll(() => {
   globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
@@ -153,5 +153,69 @@ describe("Quick Tests page", () => {
     fireEvent.click(screen.getByRole("radio", { name: "BAT-C-2500" }));
     await waitFor(() => expect(calls.some((c) => c.url.includes("/api/tests?battery_id=BAT-C-2500"))).toBe(true));
     expect(screen.getByText("Export CSV").closest("a")!.getAttribute("href")).toContain("battery_id=BAT-C-2500");
+  });
+});
+
+describe("New 5-minute Quick Test button (regression: blank selector, disabled button)", () => {
+  const prof = (id: string, extra: Partial<BatterySummary> = {}) => ({ battery_id: id, managed: 1, archived: false, source: "hardware", ...extra }) as unknown as BatterySummary;
+  const profiles = [prof("BAT-A-3000"), prof("BAT-B-3000"), prof("BAT-C-2500")];
+  const legacyAborted = mk("T-20261119-BAT-A-3000-001", "BAT-A-3000", "aborted", {
+    kind: undefined, duration_s: null, quick_test: null, started_at: "2026-11-19T00:00:00Z", abort_reason: "aborted by operator",
+  });
+
+  // A backend started before /api/quick-tests existed answers 404 for it.
+  function mockOldBackend(calls: { url: string; init?: RequestInit }[], tests: BatteryTest[] = [legacyAborted]) {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url.includes("/api/quick-tests")) return new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 });
+      if (init?.method === "POST") return new Response(JSON.stringify({ test_uid: "T-NEW", state: "not_started" }), { status: 200 });
+      if (url.match(/\/api\/tests\/T-[^/?]+$/)) return new Response(JSON.stringify(tests[0] ?? legacyAborted), { status: 200 });
+      const f = new URL(url, "http://x").searchParams.get("battery_id");
+      return new Response(JSON.stringify({ tests: f ? tests.filter((t) => t.battery_id === f) : tests }), { status: 200 });
+    });
+  }
+
+  it("lists the three profiles, preselects the viewed battery and is enabled despite an aborted legacy test", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    mockOldBackend(calls);
+    render(<TestManager battery={profiles[0]} batteries={[...profiles, prof("CELL-18650-01", { managed: 0, archived: true })]} batteriesLoading={false} />);
+    const sel = screen.getByLabelText("New test battery") as HTMLSelectElement;
+    expect([...sel.options].map((o) => o.value)).toEqual(["BAT-A-3000", "BAT-B-3000", "BAT-C-2500"]);   // archived ID excluded
+    expect(sel.value).toBe("BAT-A-3000");
+    await screen.findByText(/Quick Test overview unavailable/);                 // the failure is visible, not silent
+    const btn = screen.getByRole("button", { name: "New 5-minute Quick Test" }) as HTMLButtonElement;
+    await waitFor(() => expect(calls.some((c) => c.url.includes("/api/tests?battery_id=BAT-A-3000"))).toBe(true));
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    await waitFor(() => expect(calls.some((c) => c.init?.method === "POST")).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.init?.method === "POST")!.init!.body))).toMatchObject({ battery_id: "BAT-A-3000", kind: "quick" });
+  });
+
+  it("explains why it is disabled when no profiles can be loaded", async () => {
+    mockOldBackend([]);
+    render(<TestManager batteries={[]} batteriesLoading={false} />);
+    await screen.findByText(/Battery profiles could not be loaded .*restart it/);
+    expect((screen.getByRole("button", { name: "New 5-minute Quick Test" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("stays disabled, with the reason, while a physical-disconnect confirmation is pending", async () => {
+    const waiting = mk("T-20261119-BAT-B-3000-002", "BAT-B-3000", "aborted", {
+      quick_test: quick({ status: "interrupted", label: "Interrupted", needs_disconnect_confirmation: true }),
+    });
+    mockOldBackend([], [waiting]);
+    render(<TestManager battery={profiles[1]} batteries={profiles} batteriesLoading={false} />);
+    await screen.findByText(/Safety step pending: confirm that the load was physically disconnected after T-20261119-BAT-B-3000-002/);
+    expect((screen.getByRole("button", { name: "New 5-minute Quick Test" }) as HTMLButtonElement).disabled).toBe(true);
+    // another battery is not blocked by it
+    fireEvent.change(screen.getByLabelText("New test battery"), { target: { value: "BAT-C-2500" } });
+    await waitFor(() => expect((screen.getByRole("button", { name: "New 5-minute Quick Test" }) as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it("reason helper: aborted tests never block, pending disconnect does", () => {
+    const base = { options: ["BAT-A-3000"], selected: "BAT-A-3000", profilesLoading: false, quickError: null, pendingUid: null, busy: false };
+    expect(createBlockedReason(base)).toBeNull();
+    expect(createBlockedReason({ ...base, pendingUid: "T-1" })).toMatch(/physically disconnected after T-1/);
+    expect(createBlockedReason({ ...base, options: [], selected: "", quickError: "Not Found" })).toMatch(/restart it/);
   });
 });

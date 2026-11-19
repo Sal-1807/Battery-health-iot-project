@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, ClipboardCheck, Download, Power, Timer as TimerIcon, Unplug, XCircle } from "lucide-react";
+import type { PageProps } from "../App";
 import { api, ApiError, type BatteryTest, type QuickStatus, type TestChecklist, type TestState } from "../lib/api";
 import { usePoll } from "../lib/hooks";
 import { fmt, fmtDuration, fmtTime } from "../lib/format";
@@ -268,27 +269,60 @@ function TestDetail({ uid, onChanged }: { uid: string; onChanged: () => void }) 
   );
 }
 
-export default function TestManager() {
+/** Why "New 5-minute Quick Test" is disabled, or null when a test can be created. */
+export function createBlockedReason(o: {
+  options: string[]; selected: string; profilesLoading: boolean; quickError: string | null; pendingUid: string | null; busy: boolean;
+}): string | null {
+  if (!o.options.length) {
+    if (o.profilesLoading) return "Loading battery profiles…";
+    if (o.quickError)
+      return `Battery profiles could not be loaded (${o.quickError}). If the backend was started before this update, restart it.`;
+    return "No physical battery profiles found. Check the Batteries page.";
+  }
+  if (!o.selected) return "Choose a battery.";
+  if (o.pendingUid)
+    return `Safety step pending: confirm that the load was physically disconnected after ${o.pendingUid} (open it below) before starting another test.`;
+  if (o.busy) return "Creating test…";
+  return null;
+}
+
+export default function TestManager({ battery, batteries = [], batteriesLoading = false }: Partial<PageProps>) {
   const qt = usePoll(() => api.quickTests(), 5000, []);
   const [filter, setFilter] = useState<string>("all");
   const list = usePoll(() => api.tests(filter === "all" ? undefined : filter), 5000, [filter]);
-  const BATS = (qt.data?.batteries ?? []).map((b) => b.battery_id);
+  // Physical profiles come from the same battery list as the global selector; the quick-test
+  // overview is only a fallback, so a failing statistics endpoint cannot empty the selector.
+  const profileIds = batteries.filter((b) => b.managed && !b.archived).map((b) => b.battery_id);
+  const BATS = profileIds.length ? profileIds : (qt.data?.batteries ?? []).map((b) => b.battery_id);
   const [picked, setNewBat] = useState<string | null>(null);
-  const newBat = picked && BATS.includes(picked) ? picked : BATS[0] ?? "";
+  const viewing = battery && BATS.includes(battery.battery_id) ? battery.battery_id : null;
+  const newBat = picked && BATS.includes(picked) ? picked : viewing ?? BATS[0] ?? "";
+  // Unconfirmed physical disconnect for the chosen battery (enforced by the backend too).
+  const forNew = usePoll(newBat ? () => api.tests(newBat) : null, 5000, [newBat]);
+  const pending = (forNew.data?.tests ?? []).find((t) => t.quick_test?.needs_disconnect_confirmation) ?? null;
   const [sel, setSel] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const tests = list.data?.tests ?? [];
   const current = sel ?? tests.find((t) => !["completed", "aborted"].includes(t.state) || t.quick_test?.needs_disconnect_confirmation)?.test_uid ?? tests[0]?.test_uid ?? null;
+  const blocked = createBlockedReason({
+    options: BATS, selected: newBat, profilesLoading: batteriesLoading || (qt.loading && !profileIds.length),
+    quickError: qt.error?.message ?? null, pendingUid: pending?.test_uid ?? null, busy,
+  });
 
   const create = async () => {
     setErr(null);
+    setBusy(true);
     try {
       const r = await api.createTest(newBat);
       setSel(r.test_uid);
       list.reload();
       qt.reload();
+      forNew.reload();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -298,6 +332,7 @@ export default function TestManager() {
       <HardwareWarning />
 
       <Card title="Protocol progress" subtitle="3 valid Quick Test Cycles of 300 s per battery · 9 tests in total">
+        {qt.error && <ErrorBox message={`Quick Test overview unavailable: ${qt.error.message}`} />}
         {qt.loading ? <Loading /> : (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             {(qt.data?.batteries ?? []).map((b) => (
@@ -331,13 +366,21 @@ export default function TestManager() {
             Battery
             <select aria-label="New test battery" value={newBat} onChange={(e) => setNewBat(e.target.value)}
                     className="ml-2 rounded-lg border border-line bg-panel-2 px-2.5 py-1.5 text-sm text-ink">
+              {!BATS.length && <option value="">—</option>}
               {BATS.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
           </label>
-          <button onClick={create} disabled={!newBat} className="rounded-lg bg-accent-strong px-3 py-1.5 text-sm font-medium text-page hover:bg-accent disabled:opacity-40">
+          <button onClick={create} disabled={blocked != null} aria-describedby="create-reason"
+                  className="rounded-lg bg-accent-strong px-3 py-1.5 text-sm font-medium text-page hover:bg-accent disabled:opacity-40">
             New 5-minute Quick Test
           </button>
+          {pending && (
+            <button onClick={() => setSel(pending.test_uid)} className="text-xs text-accent hover:underline">
+              Open {pending.test_uid}
+            </button>
+          )}
         </div>
+        {blocked && <p id="create-reason" role="status" className="mt-2 text-xs text-warning">{blocked}</p>}
         {err && <div className="mt-2"><ErrorBox message={err} /></div>}
       </Card>
 
