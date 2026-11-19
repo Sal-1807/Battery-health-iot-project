@@ -240,3 +240,17 @@ regime overlap (fails: ~0.37 A vs ~1.8–2.0 A), ground-truth SoH for the cell (
 discharge), observed degradation for RUL (fails). Training on 2 A NASA windows from full charge and applying the
 model to a 0.37 A window from an unknown state of charge would be an unevaluated extrapolation, so physical SoH/RUL
 remain unavailable. The Quick Tests themselves are unchanged and still counted.
+
+## 19. Final presentation: single-battery dashboard and Experimental Demo Estimate — 2026-11-19
+
+- **Single battery.** The dashboard shows only BAT-A-3000 (`BHM_FOCUS_BATTERY`). BAT-B-3000 and BAT-C-2500, their
+  data and every migration are unchanged in SQLite; they are named under the read-only records section and can be
+  shown again by clearing the setting. Navigation is reduced to Overview, Quick Tests, Battery Analysis and Battery
+  Health Predictions; the device assignment, alerts, system status and archive moved into a collapsed section of
+  Battery Analysis.
+- **Experimental Demo Estimate.** Demo SoH (%) and Demo RUL (cycles) computed from the 3 measured Quick Tests by a
+  documented heuristic (`iot/backend/demo_estimate.py`, README). Deterministic, the same constants for every battery,
+  labelled on every display, never stored as an ML prediction. Batteries without 3 valid tests show "No estimate yet".
+- **Removed from the interface:** the "Why Quick Tests give no SoH / RUL" panel and the model-input accordion. The
+  analysis is still available through `GET /api/ml/quick-test-assessment` and is summarised in the README.
+- The saved NASA ML models and their demonstration/validation are unchanged and kept separate.

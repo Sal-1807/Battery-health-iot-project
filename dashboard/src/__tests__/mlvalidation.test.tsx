@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import MLValidation from "../pages/MLValidation";
-import type { MlFold } from "../lib/api";
+import type { BatterySummary, DemoEstimate, MlFold } from "../lib/api";
 
 beforeAll(() => {
   globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
@@ -9,7 +9,6 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  assessments = [empty("BAT-A-3000"), empty("BAT-B-3000"), empty("BAT-C-2500")];
   physicalRows = [];
 });
 
@@ -51,31 +50,6 @@ const physical = [
   { battery_id: "CELL-18650-01", archived: true, latest_valid_prediction: null, latest_prediction: null },
 ];
 
-const inputKinds: [string, "missing" | "different_quantity" | "out_of_regime", string | null][] = [
-  ["Voltage_mean", "different_quantity", "mean_voltage_v"], ["Voltage_min", "different_quantity", "final_voltage_v"],
-  ["Voltage_max", "different_quantity", "initial_voltage_v"], ["Voltage_range", "different_quantity", "voltage_drop_v"],
-  ["Current_mean", "out_of_regime", "mean_current_a"], ["Current_std", "missing", null], ["Temperature_mean", "missing", null],
-  ["Temperature_max", "different_quantity", "max_temperature_c"], ["Temperature_rise", "different_quantity", "temperature_rise_c"],
-  ["Cycle_number", "missing", null],
-];
-const qt = (n: number) => ({ number: n, test_uid: `T-20261119-BAT-A-3000-00${n}`, completed_at: "2026-11-19T10:00:00Z", duration_s: 300,
-  initial_voltage_v: 4.02 - n * 0.01, final_voltage_v: 3.93 - n * 0.01, voltage_drop_v: 0.09, mean_voltage_v: 3.96, mean_current_a: 0.372,
-  mean_power_w: 1.47, max_temperature_c: 26.4, temperature_rise_c: 0.8, delivered_mah: 31.0 + n / 10, delivered_wh: 0.123 });
-const assessA = {
-  battery_id: "BAT-A-3000",
-  quick_tests: { count: 3, target: 3, window_s: 300, measured: [qt(1), qt(2), qt(3)] },
-  saved_model: { usable: false, reason: "The saved NASA models need statistics of one complete discharge plus the true cycle count.",
-    inputs: inputKinds.map(([f, kind, key]) => ({ model_input: f, kind, quick_metric: key, quick_values: key ? [0.372, 0.371, 0.373] : [],
-      nasa_training_range: f === "Current_mean" ? { min: 1.81, max: 2.0 } : { min: 1, max: 2 }, inside_nasa_range: kind === "out_of_regime" ? false : null,
-      usable_by_saved_model: false, reason: `${f} reason` })) },
-  short_test_model: { defensible_short_test_model: false, implemented: false,
-    conclusion: "Not defensible with the available data: SoH and RUL remain unavailable for this battery.",
-    checks: [{ requirement: "Operating regime overlaps the NASA training data (load current)", met: false, detail: "0.372 A vs NASA 1.81-2.00 A." },
-             { requirement: "Ground-truth SoH for this battery to evaluate against (a measured full-capacity discharge)", met: false, detail: "0 measured." }] },
-  soh: { status: "unavailable", value: null }, rul: { status: "unavailable", value: null }, note: "Quick Test values above are genuine measurements.",
-};
-const empty = (id: string) => ({ ...assessA, battery_id: id, quick_tests: { count: 0, target: 3, window_s: 300, measured: [] } });
-let assessments: unknown[] = [empty("BAT-A-3000"), empty("BAT-B-3000"), empty("BAT-C-2500")];
 let physicalRows: unknown[] = [];
 
 function mockApi(urls: string[]) {
@@ -89,8 +63,6 @@ function mockApi(urls: string[]) {
           actual: { soh_pct: 84.6, rul_cycles: 59, reached_eol: 0 },
           saved_model: { status: "nasa_in_sample", soh_pct: 84.1, rul_cycles: 61, eol_probability: 0.05, model_version: "v", note: "Saved production models were trained on B0005, B0006 and B0018: in-sample." },
           held_out: { soh_pct: 82.0, rul_cycles: 70, trained_on: ["B0005", "B0018"], note: "" }, disclaimer: summary.disclaimer }
-      : url.includes("/api/ml/quick-test-assessment")
-      ? { batteries: assessments }
       : url.endsWith("/api/batteries")
       ? { batteries: physicalRows.length ? physicalRows : physical }
       : cell
@@ -101,24 +73,65 @@ function mockApi(urls: string[]) {
   });
 }
 
-describe("Battery Health Predictions: physical batteries and model demo", () => {
-  it("labels a gate-passing estimate as Experimental ML Estimate and never invents one otherwise", async () => {
+const demoEst = (soh: number | null, rul: number | null, ok = true): DemoEstimate => ({
+  status: ok ? "demo" : "no_estimate", label: "Experimental Demo Estimate", method: "demo-heuristic-v1",
+  disclaimer: "Not a machine-learning prediction.", reason: ok ? null : "1 of 3 valid Quick Tests completed", required_tests: 3,
+  tests_used: ok ? ["T-1", "T-2", "T-3"] : [], soh_pct: soh, rul_cycles: rul,
+  inputs: ok ? { initial_voltage_v: 4.01, final_voltage_v: 3.92, voltage_drop_v: 0.09, mean_current_a: 0.372, mean_power_w: 1.47,
+                 max_temperature_c: 26.4, temperature_rise_c: 0.8, delivered_mah: 31.0, delivered_wh: 0.123,
+                 apparent_resistance_ohm: 0.242, thermal_k_per_w: 0.54 } : null,
+  constants: { r_ref_ohm: 0.15, soh_points_per_r_doubling: 20, theta_ref_k_per_w: 2, soh_points_per_k_per_w: 2, thermal_cap_points: 5, eol_soh_pct: 80, rated_cycle_life: 500 },
+});
+const batA = (e: DemoEstimate, extra: Partial<BatterySummary> = {}) =>
+  ({ battery_id: "BAT-A-3000", managed: 1, archived: false, quick_test_cycles: { count: e.status === "demo" ? 3 : 1, target: 3, last: null, demo_estimate: e },
+     latest_valid_prediction: null, latest_prediction: null, ...extra }) as unknown as BatterySummary;
+
+describe("Battery Health Predictions: Experimental Demo Estimate for BAT-A-3000", () => {
+  it("shows the demo SoH and RUL prominently with the renamed columns and labels", async () => {
     mockApi([]);
-    render(<MLValidation />);
+    render(<MLValidation batteries={[batA(demoEst(87.7, 193))]} />);
     expect(screen.getByRole("heading", { name: "Battery Health Predictions" })).toBeTruthy();
-    await screen.findByText("BAT-A-3000");
-    const a = screen.getByText("BAT-A-3000").closest("tr")!;
-    expect(a.textContent).toContain("91.2 %");
-    expect(a.textContent).toContain("88 cycles");
-    expect(a.textContent).toContain("Experimental ML Estimate");
-    const b = screen.getByText("BAT-B-3000").closest("tr")!;
-    expect(b.textContent).toContain("Not available");
-    expect(b.textContent).toContain("outside NASA training range");
-    expect(b.textContent).not.toMatch(/%/);
-    expect(screen.getByText("BAT-C-2500").closest("tr")!.textContent).toMatch(/Quick Tests are not complete discharge records/);
-    expect(screen.queryByText("CELL-18650-01")).toBeNull();          // archived records are not predicted
+    expect(screen.getByText("Demo SoH Estimate (%)")).toBeTruthy();
+    expect(screen.getByText("Demo RUL Estimate (cycles)")).toBeTruthy();
+    expect(screen.getAllByText("87.7").length).toBe(2);                // tile + table
+    expect(screen.getAllByText("193").length).toBe(2);
+    expect(screen.getAllByText("Experimental Demo Estimate").length).toBe(3);   // 2 tiles + table status
+    expect(screen.queryByText(/Why Quick Tests give no SoH/)).toBeNull();        // diagnostic panel removed
+    expect(screen.queryByText(/Model inputs vs\. Quick Test measurements/)).toBeNull();
+    expect(screen.getByText(/not applied \(it needs a complete discharge cycle\)/)).toBeTruthy();   // ML kept separate
+    expect(screen.getByText(/Saved-model predictions — NASA dataset example/)).toBeTruthy();
   });
 
+  it("explains the heuristic in a concise method view and never calls it ML", async () => {
+    mockApi([]);
+    render(<MLValidation batteries={[batA(demoEst(87.7, 193))]} />);
+    const det = screen.getByText("Method and inputs").closest("details")!;
+    det.open = true;
+    fireEvent(det, new Event("toggle"));
+    await screen.findByText(/not a\s+machine-learning model/);
+    expect(screen.getByText("Apparent resistance ΔV/I (Ω)")).toBeTruthy();
+    expect(screen.getByText("0.242")).toBeTruthy();
+    expect(screen.getByText(/Tests used: T-1, T-2, T-3/)).toBeTruthy();
+  });
+
+  it("shows 'No estimate yet' without valid tests, never a number", () => {
+    mockApi([]);
+    render(<MLValidation batteries={[batA(demoEst(null, null, false))]} />);
+    expect(screen.getAllByText("No estimate yet").length).toBe(3);
+    const row = screen.getByText("BAT-A-3000", { selector: "td" }).closest("tr")!;
+    expect(row.textContent).toBe("BAT-A-30001 / 3——No estimate yet");
+  });
+
+  it("updates the displayed numbers when the estimate changes", () => {
+    mockApi([]);
+    const { rerender } = render(<MLValidation batteries={[batA(demoEst(87.7, 193))]} />);
+    rerender(<MLValidation batteries={[batA(demoEst(74.7, 0))]} />);
+    expect(screen.getAllByText("74.7").length).toBe(2);
+    expect(screen.queryByText("87.7")).toBeNull();
+  });
+});
+
+describe("saved ML model demonstration (NASA data, separate from the demo heuristic)", () => {
   it("runs the saved model on a chosen NASA dataset cycle, beside the held-out model", async () => {
     const urls: string[] = [];
     mockApi(urls);
@@ -130,45 +143,7 @@ describe("Battery Health Predictions: physical batteries and model demo", () => 
     expect(screen.getByText(/trained on B0005 \+ B0018 only/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Demo cycle"), { target: { value: "120" } });
     await waitFor(() => expect(urls.some((u) => u.includes("/demo?cycle=120"))).toBe(true));
-  });
-});
-
-describe("Battery A after 3/3 Quick Tests (regression: unexplained 'unavailable')", () => {
-  it("shows the 3 measured tests, why SoH/RUL stay unavailable, and no fabricated value", async () => {
-    assessments = [assessA, empty("BAT-B-3000"), empty("BAT-C-2500")];
-    physicalRows = physical.map((p) => p.battery_id === "BAT-A-3000"
-      ? { ...p, latest_valid_prediction: null, latest_prediction: pred("unavailable", null, null, ["incomplete cycle"]) } : p);
-    mockApi([]);
-    render(<MLValidation />);
-    const row = (await screen.findByText("3 / 3")).closest("tr")!;
-    expect(row.textContent).toContain("BAT-A-3000");
-    expect(row.textContent).toMatch(/3 measured 300 s Quick Tests\. They are partial discharges/);
-    expect(row.textContent).toContain("Not available");
-    expect(row.textContent).not.toMatch(/%|cycles\b(?! the)/);
-    await screen.findByText(/Why Quick Tests give no SoH \/ RUL — BAT-A-3000/);
-    expect(screen.getByText("Test 3/3")).toBeTruthy();
-    expect(screen.getByText("31.3")).toBeTruthy();                                 // genuine mAh of test 3
-    expect(screen.getByText(/Saved NASA models: not applicable/)).toBeTruthy();
-    expect(screen.getByText(/Not defensible with the available data/)).toBeTruthy();
-    expect(screen.getByText(/Operating regime overlaps the NASA training data/)).toBeTruthy();
-    // the working saved-model predictions are shown separately, on NASA data, not as Battery A
-    expect(screen.getByText(/Saved-model predictions — NASA dataset example/)).toBeTruthy();
-    expect(screen.getByText(/not BAT-A, BAT-B or BAT-C/)).toBeTruthy();
-  });
-
-  it("lists all 10 model inputs with their incompatibility when expanded", async () => {
-    assessments = [assessA, empty("BAT-B-3000"), empty("BAT-C-2500")];
-    mockApi([]);
-    render(<MLValidation />);
-    const det = (await screen.findByText("Model inputs vs. Quick Test measurements (10 inputs)")).closest("details")!;
-    det.open = true;
-    fireEvent(det, new Event("toggle"));
-    await screen.findByText("Cycle_number");
-    expect(screen.getAllByText("not measured").length).toBe(3);
-    expect(screen.getAllByText("different quantity").length).toBe(6);
-    expect(screen.getAllByText("outside NASA regime").length).toBe(1);
-  });
-});
+  });});
 
 describe("ML validation page", () => {
   it("shows the disclaimer, protocol and observed EOL for the held-out cell", async () => {

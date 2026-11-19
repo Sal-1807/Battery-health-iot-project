@@ -4,7 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import Overview from "../pages/Overview";
 import App from "../App";
-import type { BatterySummary } from "../lib/api";
+import type { BatterySummary, DemoEstimate } from "../lib/api";
 import { fmt, fmtAge } from "../lib/format";
 
 beforeAll(() => {
@@ -57,6 +57,11 @@ const base: BatterySummary = {
   last_session: null,
 };
 
+const demo: DemoEstimate = {
+  status: "demo", label: "Experimental Demo Estimate", method: "demo-heuristic-v1", disclaimer: "", reason: null, required_tests: 3,
+  tests_used: ["T1", "T2", "T3"], soh_pct: 87.7, rul_cycles: 193, inputs: { voltage_drop_v: 0.09 },
+};
+
 describe("Overview", () => {
   it("shows measured values with units and provenance", () => {
     render(<Overview battery={base} batteries={[base]} batteriesLoading={false} />);
@@ -66,24 +71,35 @@ describe("Overview", () => {
     expect(screen.getAllByText("Measured").length).toBe(5); // V, I, T, device power + live chart header
   });
 
-  it("never shows a SoH number when no estimate exists", () => {
-    const b = { ...base, managed: 1 };
+  it("shows 'No estimate yet' until the valid Quick Tests exist, never a number", () => {
+    const b = { ...base, managed: 1, quick_test_cycles: { count: 2, target: 3, last: null,
+      demo_estimate: { ...demo, status: "no_estimate" as const, soh_pct: null, rul_cycles: null, tests_used: [], inputs: null, reason: "2 of 3 valid Quick Tests completed" } } } as BatterySummary;
     render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
-    expect(screen.getAllByText("Unavailable").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/Not available for this battery/)).toBeTruthy();
+    expect(screen.getAllByText("No estimate yet").length).toBe(2);
+    expect(screen.getAllByText("2 of 3 valid Quick Tests completed").length).toBe(2);
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
-  it("labels an experimental estimate", () => {
-    const b = {
-      ...base,
-      managed: 1,
-      latest_valid_prediction: { ...base.latest_prediction!, status: "experimental" as const, soh_pct: 81.23, rul_cycles: 40.4, eol_probability: 0.1, cycle_number: 50, reasons: [] },
-    };
+  it("shows the two demo numbers prominently, each labelled Experimental Demo Estimate", () => {
+    const b = { ...base, managed: 1, quick_test_cycles: { count: 3, target: 3, last: null, demo_estimate: demo } } as BatterySummary;
     render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
-    expect(screen.getByText("81.2 %")).toBeTruthy();
-    expect(screen.getAllByText("Experimental").length).toBe(1);
-    expect(screen.getByText(/Experimental ML Estimate — not validated for this cell/)).toBeTruthy();
+    expect(screen.getByText("Demo SoH Estimate")).toBeTruthy();
+    expect(screen.getByText("87.7")).toBeTruthy();
+    expect(screen.getByText("Demo RUL Estimate")).toBeTruthy();
+    expect(screen.getByText("193")).toBeTruthy();
+    expect(screen.getAllByText("Experimental Demo Estimate").length).toBe(2);
+    expect(screen.getAllByText(/illustrative, not a measured or validated value/).length).toBe(2);
+    expect(screen.queryByText(/ML/)).toBeNull();                               // never presented as ML
+  });
+
+  it("keeps a genuine experimental ML estimate separate from the demo score", () => {
+    const b = {
+      ...base, managed: 1, quick_test_cycles: { count: 3, target: 3, last: null, demo_estimate: demo },
+      latest_valid_prediction: { ...base.latest_prediction!, status: "experimental" as const, soh_pct: 81.23, rul_cycles: 40.4, eol_probability: 0.1, cycle_number: 50, reasons: [] },
+    } as BatterySummary;
+    render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
+    expect(screen.getByText("87.7")).toBeTruthy();
+    expect(screen.getByText(/Saved ML model \(separate\): Experimental ML Estimate 81\.2 % SoH, 40 cycles RUL/)).toBeTruthy();
   });
 
   it("marks simulated data", () => {
@@ -118,6 +134,27 @@ describe("App shell", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText("3.891")).toBeTruthy());
     expect(screen.getByText("API connected")).toBeTruthy();
+  });
+});
+
+describe("single-battery focus", () => {
+  it("shows only the focus battery, four sections, and keeps hidden profiles out of the selector", async () => {
+    const mk = (id: string, extra: Partial<BatterySummary> = {}) => ({ ...base, battery_id: id, managed: 1, archived: false, ...extra }) as BatterySummary;
+    const list = [mk("BAT-A-3000"), mk("BAT-B-3000"), mk("BAT-C-2500"), mk("CELL-18650-01", { managed: 0, archived: true })];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.includes("/api/health")
+        ? { status: "ok", mode: "production", focus_battery: "BAT-A-3000", api_version: "1", server_time: now, started_at: now, database: { ok: true, path: "x" }, models: { loaded: true, version: "v", error: null } }
+        : url.includes("/api/batteries") ? { batteries: list } : {};
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    render(<App />);
+    const sel = (await screen.findByLabelText("Select battery")) as HTMLSelectElement;
+    await waitFor(() => expect([...sel.options].map((o) => o.value)).toEqual(["BAT-A-3000", "CELL-18650-01"]));
+    expect(sel.value).toBe("BAT-A-3000");
+    const nav = screen.getByRole("navigation", { name: "Sections" });
+    expect([...nav.querySelectorAll("button")].map((x) => x.textContent?.trim())).toEqual(
+      ["Overview", "Quick Tests", "Battery Analysis", "Battery Health Predictions"]);
   });
 });
 
@@ -186,10 +223,9 @@ describe("format helpers", () => {
 
 describe("Quick Test progress on the Overview", () => {
   it("shows n / 3 valid Quick Test Cycles for a battery profile", () => {
-    const b = { ...base, managed: 1, quick_test_cycles: { count: 2, target: 3, last: { delivered_mah: 31.04, completed_at: now } } } as BatterySummary;
+    const b = { ...base, managed: 1, quick_test_cycles: { count: 2, target: 3, last: null } } as BatterySummary;
     render(<Overview battery={b} batteries={[b]} batteriesLoading={false} />);
-    expect(screen.getByText("2 / 3")).toBeTruthy();
-    expect(screen.getByText(/31\.0 mAh in 300 s/)).toBeTruthy();
+    expect(screen.getByText(/Quick Test Cycles 2 \/ 3/)).toBeTruthy();
   });
 });
 

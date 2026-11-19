@@ -1,17 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, ClipboardList, Gauge, Layers, LineChart as LineChartIcon, Zap } from "lucide-react";
+import { BrainCircuit, ClipboardList, Gauge, LineChart as LineChartIcon, Zap } from "lucide-react";
 import { api, type BatterySummary } from "./lib/api";
 import { useLocalStorage, usePoll } from "./lib/hooks";
 import { Pill } from "./components/ui";
 import Overview from "./pages/Overview";
-import Batteries from "./pages/Batteries";
 import MLValidation from "./pages/MLValidation";
 import Aging from "./pages/Aging";
 import TestManager from "./pages/TestManager";
 
 const PAGES = [
   { id: "overview", label: "Overview", icon: Gauge },
-  { id: "batteries", label: "Batteries", icon: Layers },
   { id: "tests", label: "Quick Tests", icon: ClipboardList },
   { id: "analysis", label: "Battery Analysis", icon: LineChartIcon },
   { id: "ml", label: "Battery Health Predictions", icon: BrainCircuit },
@@ -20,7 +18,7 @@ type PageId = (typeof PAGES)[number]["id"];
 
 // Sections merged in the final layout keep working as links.
 const ALIASES: Record<string, PageId> = {
-  live: "overview", alerts: "overview", system: "batteries", history: "analysis", aging: "analysis", health: "ml",
+  live: "overview", alerts: "analysis", system: "analysis", batteries: "analysis", history: "analysis", aging: "analysis", health: "ml",
 };
 
 function usePage(): [PageId, (p: string) => void] {
@@ -42,6 +40,8 @@ export interface PageProps {
   batteries: BatterySummary[];
   batteriesLoading: boolean;
   selectBattery?: (id: string, page?: string) => void;
+  /** Profiles kept in the database but hidden by the single-battery focus (BHM_FOCUS_BATTERY). */
+  hiddenProfiles?: BatterySummary[];
 }
 
 export default function App() {
@@ -51,11 +51,16 @@ export default function App() {
   const [selected, setSelected] = useLocalStorage("bhm.battery", "");
 
   const all = batteries.data?.batteries ?? [];
-  const active = all.filter((b) => !b.archived);
+  const nonArchived = all.filter((b) => !b.archived);
+  const focus = health.data?.focus_battery;
+  // Single-battery focus: other profiles stay in SQLite but are not shown or selectable.
+  const focused = focus ? nonArchived.filter((b) => b.battery_id === focus) : [];
+  const active = focused.length ? focused : nonArchived;
+  const hiddenProfiles = focused.length ? nonArchived.filter((b) => b.battery_id !== focus) : [];
   const archived = all.filter((b) => b.archived);
   const battery = useMemo(
-    () => all.find((b) => b.battery_id === selected) ?? active[0] ?? all[0],
-    [all, active, selected],
+    () => [...active, ...archived].find((b) => b.battery_id === selected) ?? active[0] ?? archived[0],
+    [active, archived, selected],
   );
   const alertTotal = active.reduce((n, b) => n + (b.active_alerts.critical ?? 0) + (b.active_alerts.warning ?? 0), 0);
 
@@ -64,7 +69,7 @@ export default function App() {
     setSelected(id);
     if (p) go(p);
   };
-  const props: PageProps = { battery, batteries: active, batteriesLoading: batteries.loading, selectBattery };
+  const props: PageProps = { battery, batteries: active, batteriesLoading: batteries.loading, selectBattery, hiddenProfiles };
 
   return (
     <div className="min-h-screen">
@@ -81,7 +86,7 @@ export default function App() {
           </div>
 
           <div className="ml-auto flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-xs text-ink-3" title="Which battery's data to view. The physically connected battery is set on the Batteries page.">
+            <label className="flex items-center gap-2 text-xs text-ink-3" title="Which battery's data to view">
               Viewing
               <select
                 aria-label="Select battery"
@@ -144,8 +149,8 @@ export default function App() {
       {battery?.archived && (
         <div className="border-b border-warning/30 bg-warning/10">
           <p className="mx-auto max-w-7xl px-4 py-2 text-xs text-warning sm:px-6">
-            ARCHIVED RECORD (read-only) — {battery.battery_id} is not part of the current three-battery protocol. Its history is
-            kept as recorded and is never merged into BAT-A, BAT-B or BAT-C.
+            ARCHIVED RECORD (read-only) — {battery.battery_id} is not part of the current protocol. Its history is kept as
+            recorded and is never merged into a battery profile.
           </p>
         </div>
       )}
@@ -159,16 +164,15 @@ export default function App() {
           </div>
         )}
         {page === "overview" && <Overview {...props} />}
-        {page === "batteries" && <Batteries {...props} />}
         {page === "tests" && <TestManager {...props} />}
         {page === "analysis" && <Aging {...props} />}
-        {page === "ml" && <MLValidation />}
+        {page === "ml" && <MLValidation {...props} />}
       </main>
 
       <footer className="mx-auto max-w-7xl px-4 pb-8 pt-2 text-[11px] text-ink-3 sm:px-6">
-        Software monitoring only: alerts, buttons and the Quick Test timer cannot disconnect the battery or the load. No validated
-        SoH or RUL model exists for the physical batteries: at most a gated Experimental ML Estimate is shown, and the NASA
-        model demonstration is kept separate.
+        Software monitoring only: alerts, buttons and the Quick Test timer cannot disconnect the battery or the load. Health
+        figures marked Experimental Demo Estimate are illustrative heuristic scores, not measured or validated values; the
+        NASA-trained ML demonstration is kept separate.
       </footer>
     </div>
   );

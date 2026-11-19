@@ -34,25 +34,48 @@ Details and the data model: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Dashboard
 
-Five sections:
+The dashboard is focused on one battery, **BAT-A-3000** (setting `BHM_FOCUS_BATTERY`, default `BAT-A-3000`; set it to an
+empty value to show all profiles again). BAT-B-3000 and BAT-C-2500 stay in the database unchanged and are only hidden.
 
 | Section | What it shows |
 |---|---|
-| **Overview** | Live sensor readings of the selected battery (voltage, current, temperature, power), INA219 / DS18B20 / cell-presence status, live charts, Quick Test progress (n / 3), active alerts. |
-| **Batteries** | Which battery is physically connected (switch with confirmation), the A/B/C comparison (rated capacity, Quick Test Cycles, throughput mAh / Wh, EFC, full cycles, SoH/RUL status), and collapsed sections for alerts & thresholds, system status and the **read-only archive**. |
-| **Quick Tests** | The 3 × 300 s protocol per battery: progress, create/start/stop, live countdown, the physical-disconnect step, validity checks and the history of every attempt with CSV export. |
-| **Battery Analysis** | A/B/C comparison of Quick Test averages (± range, % vs. group mean), per-test trends, measured discharge throughput, measured full capacity (only from complete discharges) and the reading history with CSV export. |
-| **Battery Health Predictions** | SoH / RUL / status for each physical battery (Experimental ML Estimate or Not available, with the reason), a selectable model demo on real NASA dataset cycles, and the leave-one-cell-out validation. |
+| **Overview** | Live sensor readings (voltage, current, temperature, power), sensor and cell-presence status, live charts, and the two **Experimental Demo Estimate** scores. |
+| **Quick Tests** | The 3 × 300 s protocol: progress, the completed tests and their results, live countdown for a new test, the physical-disconnect step, validity checks and CSV export. |
+| **Battery Analysis** | Quick Test results (averages ± range), per-test trends, measured discharge throughput, measured full capacity (only from complete discharges), reading history with CSV export, and a collapsed *Device, alerts and records* section (device assignment, alert thresholds, system status, archived records). |
+| **Battery Health Predictions** | The Experimental Demo Estimate (Demo SoH / Demo RUL) with a short method view, then the separate saved-ML-model demonstration on NASA dataset cycles and the leave-one-cell-out validation. |
 
-Retired IDs such as `CELL-18650-01` (used before the battery profiles existed), unassigned readings and older demo data
-are kept unchanged and reachable under **Batteries → Archived records**. They are never merged into BAT-A/B/C.
+Retired IDs such as `CELL-18650-01` are kept read-only under Battery Analysis → Device, alerts and records.
+
+## Experimental Demo Estimate (illustrative, not ML, not measured)
+
+Once a battery has 3 valid Quick Tests, `iot/backend/demo_estimate.py` turns their **measured** values into two
+illustrative scores with a fixed, documented arithmetic heuristic (no randomness, same constants for every battery):
+
+```
+R      = mean(voltage drop / mean current)                    apparent 300 s window resistance, ohm
+theta  = mean(temperature rise / mean power)                  thermal response, K/W
+SoH    = clamp(100 - 20 * max(0, R / 0.15 - 1) - min(5, 2 * max(0, theta - 2)), 0, 100)
+RUL    = 500 * max(0, SoH - 80) / 20                          cycles
+```
+
+The constants are illustrative assumptions: a reference window resistance of 0.15 Ω for a healthy cell on this rig;
+20 points lost when resistance doubles (the common "end of life ≈ resistance doubled ≈ 80 % SoH" rule of thumb); a
+small capped thermal term; a linear fade over a typical 500-cycle datasheet life to 80 %. Initial/final voltage, mAh
+and Wh are shown with the estimate. With fewer than 3 valid tests the dashboard shows **No estimate yet**.
+
+**Limitations.** These scores are not a measured SoH, not a validated RUL and not a machine-learning prediction. A
+300 s test at ~0.37 A carries little health information: the apparent resistance includes polarisation and wiring,
+and the reference constants were not calibrated on these cells. The NASA-trained models cannot use Quick Tests (their
+10 inputs are whole-cycle statistics plus the true cycle count; see `iot/backend/short_test_ml.py` and
+`GET /api/ml/quick-test-assessment`), and no defensible short-test ML model can be built from the available data
+(NASA current regime ~2 A vs ~0.37 A, no measured full-capacity discharge for the cell, no observed degradation).
 
 ## Quick Test protocol
 
 A **Quick Test Cycle** is one 5-minute (300 s) measurement under the resistive load. It is *not* a full
 charge–discharge cycle, it does not change the full-cycle count, and it is never used as the battery's capacity.
 
-1. Batteries → select the physically connected battery.
+1. Battery Analysis → Device, alerts and records → check that the physically connected battery is selected.
 2. Quick Tests → **New 5-minute Quick Test** → complete the checklist → **Start recording**, then connect the load.
 3. The countdown runs. At 300 s **the software stops recording automatically. This does NOT disconnect the
    battery or stop the current** — there is no switching hardware.
@@ -160,9 +183,9 @@ banner and simulated profiles are tagged SIMULATED. See [docs/SIMULATION.md](doc
 ## Tests
 
 ```bash
-pytest iot/tests -q                 # backend: 170 tests, includes the simulation run
+pytest iot/tests -q                 # backend: 182 tests, includes the simulation run
 python -m iot.simulation.run        # 52 end-to-end checks
-cd dashboard && npm test            # dashboard: 44 tests (vitest + jsdom)
+cd dashboard && npm test            # dashboard: 53 tests (vitest + jsdom)
 cd dashboard && npm run build       # typecheck + production build
 ```
 
@@ -174,6 +197,7 @@ The model tests skip (rather than fail) if `models/*.pkl` have not been generate
 |---|---|---|
 | **Measured** | Overview, Quick Tests, Battery Analysis | INA219 / DS18B20 readings and quantities integrated from them (mAh, Wh, EFC). Voltage counts as a cell voltage only once presence is verified by load current or by an operator. |
 | **Simulated** | Only in `BHM_MODE=simulation` | Synthetic data in its own database, always labelled. |
+| **Experimental Demo Estimate** | Overview, Battery Health Predictions | Illustrative heuristic score from the measured Quick Tests (see above). Not measured, not validated, not ML. |
 | **Experimental ML Estimate** | Battery Health Predictions, Overview | Output of the NASA-trained models on a physical battery's discharge cycle, *only* if the cycle is complete, every input lies inside the NASA training range (widened by 10 % of that range) and the cycle count is known. Not validated for these cells. |
 | **Not available** | — | Shown with the reason whenever the gate is not passed. No SoH, RUL or capacity number is ever filled in. |
 

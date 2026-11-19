@@ -199,7 +199,7 @@ export interface BatterySummary {
   last_session: DischargeSession | null;
   managed?: number | boolean;
   archived?: boolean;
-  quick_test_cycles?: { count: number; target: number; last: QuickCycle | null };
+  quick_test_cycles?: { count: number; target: number; last: QuickCycle | null; demo_estimate?: DemoEstimate };
   assignment?: DeviceAssignment | null;
   stats?: BatteryStats;
 }
@@ -289,6 +289,7 @@ export interface Thresholds {
 export interface Health {
   status: "ok" | "degraded";
   mode?: "production" | "simulation";
+  focus_battery?: string | null;
   api_version: string;
   server_time: string;
   started_at: string;
@@ -435,6 +436,14 @@ export interface QuickCycle {
   mean_voltage_v: number | null; mean_current_a: number | null; mean_power_w: number | null;
   max_temperature_c: number | null; temperature_rise_c: number | null; delivered_mah: number; delivered_wh: number;
 }
+/** Illustrative heuristic score from the Quick Tests (iot/backend/demo_estimate.py). Not ML, not a measurement. */
+export interface DemoEstimate {
+  status: "demo" | "no_estimate"; label: string; method: string; disclaimer: string; reason: string | null;
+  required_tests: number; tests_used: string[]; soh_pct: number | null; rul_cycles: number | null;
+  inputs: Record<string, number | null> | null;
+  components?: { resistance_penalty_pts: number; thermal_penalty_pts: number };
+  constants?: Record<string, number>;
+}
 export type QuickStatus = "not_started" | "in_progress" | "counted" | "incomplete" | "interrupted" | "telemetry_gap" | "invalid";
 export interface QuickBattery {
   battery_id: string; count: number; target: number; duration_s: number; next_test_number: number | null; complete: boolean;
@@ -442,6 +451,7 @@ export interface QuickBattery {
   attempts: { test_uid: string; state: string; status: QuickStatus; label: string; number?: number }[];
   summary: Record<string, { mean: number; min: number; max: number } | null>;
   not_counted: Record<string, number>;
+  demo_estimate?: DemoEstimate;
 }
 export type QuickMetric = "mean_voltage_v" | "mean_current_a" | "mean_power_w" | "max_temperature_c" | "voltage_drop_v" | "delivered_mah" | "delivered_wh";
 export interface QuickOverview {

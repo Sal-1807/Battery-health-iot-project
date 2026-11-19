@@ -219,3 +219,19 @@ describe("New 5-minute Quick Test button (regression: blank selector, disabled b
     expect(createBlockedReason({ ...base, options: [], selected: "", quickError: "Not Found" })).toMatch(/restart it/);
   });
 });
+
+describe("Quick Tests in single-battery mode", () => {
+  it("shows only BAT-A-3000's progress and history, without battery filters", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    mockApi({ current: counted }, calls);
+    const A = { battery_id: "BAT-A-3000", managed: 1, archived: false, source: "hardware" } as unknown as BatterySummary;
+    render(<TestManager battery={A} batteries={[A]} batteriesLoading={false} />);
+    await screen.findByText("3 / 3 done");
+    expect(screen.queryByText("Next: Test 1/3")).toBeNull();                      // BAT-B card hidden
+    expect(screen.queryByRole("radiogroup", { name: "Battery filter" })).toBeNull();
+    expect((screen.getByLabelText("New test battery") as HTMLSelectElement).value).toBe("BAT-A-3000");
+    await waitFor(() => expect(calls.some((c) => c.url.includes("/api/tests?battery_id=BAT-A-3000"))).toBe(true));
+    expect(calls.some((c) => /\/api\/tests$/.test(c.url) && !c.init?.method)).toBe(false);   // never the all-battery list
+    expect(screen.getByText("Export CSV").closest("a")!.getAttribute("href")).toContain("battery_id=BAT-A-3000");
+  });
+});

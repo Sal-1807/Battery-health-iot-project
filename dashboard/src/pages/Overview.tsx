@@ -5,7 +5,8 @@ import { api, ApiError, VALID_CELL_STATES, type BatterySummary, type Reading } f
 import { usePoll } from "../lib/hooks";
 import Live from "./Live";
 import { ageSeconds, ALERT_LABEL, CELL_STATE_LABEL, fmt, fmtAge, fmtTime, FLAG_LABEL, TIMESTAMP_LABEL } from "../lib/format";
-import { Card, ConnectionPill, EmptyState, Loading, Pill, PredictionPill, Provenance, SeverityPill, SourceBadge, StatTile } from "../components/ui";
+import { Card, ConnectionPill, EmptyState, Loading, Pill, Provenance, SeverityPill, SourceBadge, StatTile } from "../components/ui";
+import { DemoEstimateTiles } from "../components/demo";
 
 function measuredKind(b: BatterySummary) {
   return b.source === "hardware" ? "measured" : "simulated";
@@ -158,7 +159,7 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
     return (
       <Card title="No batteries registered yet">
         <EmptyState icon={<Cpu size={22} />} title="Waiting for the first reading">
-          Select the connected battery on the Batteries page and start the ESP32 bridge. Readings appear here as soon as
+          Select the connected battery under Battery Analysis → Device, alerts and records, and start the ESP32 bridge. Readings appear here as soon as
           they arrive.
         </EmptyState>
       </Card>
@@ -208,7 +209,7 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
         </Card>
       ) : !r ? (
         <EmptyState title="No readings for this battery yet">
-          Select it as the connected battery on the Batteries page, then start the ESP32 / USB bridge.
+          Select it as the connected battery under Battery Analysis → Device, alerts and records, then start the ESP32 / USB bridge.
         </EmptyState>
       ) : (
         <>
@@ -256,29 +257,22 @@ export default function Overview({ battery: b, batteriesLoading }: PageProps) {
         </>
       )}
 
-      {b.managed ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <StatTile
-            label="Quick Test Cycles"
-            value={`${b.quick_test_cycles?.count ?? 0} / ${b.quick_test_cycles?.target ?? 3}`}
-            foot={
-              b.quick_test_cycles?.last
-                ? `Last: ${fmt(b.quick_test_cycles.last.delivered_mah, 1)} mAh in 300 s, ${fmtTime(b.quick_test_cycles.last.completed_at, true)}`
-                : "No valid 300 s Quick Test yet — see Quick Tests"
-            }
-          />
-          <StatTile
-            label="SoH / RUL"
-            value={b.latest_valid_prediction?.status === "experimental" ? `${fmt(b.latest_valid_prediction.soh_pct, 1)} %` : "—"}
-            muted={b.latest_valid_prediction?.status !== "experimental"}
-            tag={<PredictionPill status={b.latest_valid_prediction?.status} />}
-            foot={
-              b.latest_valid_prediction?.status === "experimental"
-                ? "Experimental ML Estimate — not validated for this cell"
-                : "Not available for this battery — see Battery Health Predictions"
-            }
-          />
-        </div>
+      {b.managed && !b.archived ? (
+        <section className="space-y-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-base font-semibold">Health estimate</h2>
+            <p className="text-xs text-ink-3">
+              Quick Test Cycles {Math.min(b.quick_test_cycles?.count ?? 0, b.quick_test_cycles?.target ?? 3)} / {b.quick_test_cycles?.target ?? 3}
+            </p>
+          </div>
+          <DemoEstimateTiles e={b.quick_test_cycles?.demo_estimate} />
+          {b.latest_valid_prediction?.status === "experimental" && (
+            <p className="text-xs text-ink-2">
+              Saved ML model (separate): Experimental ML Estimate {fmt(b.latest_valid_prediction.soh_pct, 1)} % SoH,{" "}
+              {fmt(b.latest_valid_prediction.rul_cycles, 0)} cycles RUL.
+            </p>
+          )}
+        </section>
       ) : null}
 
       {b.source !== "nasa_replay" && r && <Live battery={b} batteries={[b]} batteriesLoading={false} />}

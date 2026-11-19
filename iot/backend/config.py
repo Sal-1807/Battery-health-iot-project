@@ -21,6 +21,9 @@ class Settings:
     # simulation database with SIM-* profiles and refuses hardware telemetry.
     mode: str = field(default_factory=lambda: _env("MODE", "production").strip().lower())
     db_path: Path = field(default_factory=lambda: Path(_env("DB_PATH", str(DEFAULT_DB_PATH))))
+    # The dashboard shows only this battery profile (others stay in the database, hidden).
+    # Empty string = show all profiles. In simulation mode the SIM- variant is used.
+    focus_battery: str = field(default_factory=lambda: _env("FOCUS_BATTERY", "BAT-A-3000").strip())
     model_dir: Path = field(default_factory=lambda: Path(_env("MODEL_DIR", str(REPO_ROOT / "models"))))
     features_csv: Path = field(default_factory=lambda: Path(_env(
         "FEATURES_CSV", str(REPO_ROOT / "data" / "processed" / "battery_health_features.csv"))))

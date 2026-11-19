@@ -6,6 +6,7 @@ import { END_REASON, fmt, fmtDuration, fmtTime } from "../lib/format";
 import { CycleChart } from "../components/charts";
 import { Card, Collapsible, EmptyState, ErrorBox, Loading, Notice, Pill, StatTile, Table } from "../components/ui";
 import HistoryPage from "./History";
+import DeviceAndRecords from "./Batteries";
 
 const S1 = "var(--color-series-1)";
 
@@ -20,10 +21,14 @@ const METRICS: { key: QuickMetric; label: string; unit: string; digits: number }
 ];
 
 /** A/B/C side by side: averages over each battery's 3 valid Quick Test Cycles. */
-export function QuickComparison({ data }: { data: QuickOverview }) {
-  const rows = data.comparison.rows;
+export function QuickComparison({ data, only }: { data: QuickOverview; only?: string[] }) {
+  const rows = only?.length ? data.comparison.rows.filter((r) => only.includes(r.battery_id)) : data.comparison.rows;
+  const single = rows.length === 1;
   return (
-    <Card title="Quick Test comparison" subtitle={data.comparison.note}>
+    <Card
+      title={single ? "Quick Test results" : "Quick Test comparison"}
+      subtitle={single ? "Averages over the valid 300 s Quick Test Cycles (± half the range across tests)" : data.comparison.note}
+    >
       <Table head={["Battery", "Quick Test Cycles", ...METRICS.map((m) => `${m.label} (${m.unit})`)]}>
         {rows.map((r) => (
           <tr key={r.battery_id}>
@@ -142,7 +147,7 @@ function Throughput({ id }: { id: string }) {
   );
 }
 
-export default function Aging({ battery, batteries = [], selectBattery }: Partial<PageProps>) {
+export default function Aging({ battery, batteries = [], selectBattery, hiddenProfiles = [] }: Partial<PageProps>) {
   const qt = usePoll(() => api.quickTests(), 10000, []);
   const id = battery?.battery_id;
   const isProfile = !!battery?.managed && !battery?.archived;
@@ -151,21 +156,18 @@ export default function Aging({ battery, batteries = [], selectBattery }: Partia
     <div className="space-y-6">
       <h1 className="text-xl font-semibold">Battery Analysis</h1>
       {qt.error && <ErrorBox message={qt.error.message} />}
-      {qt.loading ? <Loading /> : qt.data && <QuickComparison data={qt.data} />}
+      {qt.loading ? <Loading /> : qt.data && <QuickComparison data={qt.data} only={batteries.map((b) => b.battery_id)} />}
 
       {battery && (
         <section className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-base font-semibold">{id}</h2>
             {isProfile ? <Pill tone="accent">Battery profile</Pill> : <Pill tone="warning">Archived (read-only)</Pill>}
-            {selectBattery &&
-              batteries
-                .filter((b) => b.battery_id !== id)
-                .map((b) => (
-                  <button key={b.battery_id} className="text-xs text-accent hover:underline" onClick={() => selectBattery(b.battery_id)}>
-                    {b.battery_id}
-                  </button>
-                ))}
+            {!isProfile && selectBattery && batteries[0] && (
+              <button className="text-xs text-accent hover:underline" onClick={() => selectBattery(batteries[0].battery_id)}>
+                Back to {batteries[0].battery_id}
+              </button>
+            )}
           </div>
           {isProfile && qt.data && <QuickTrends id={id!} data={qt.data} />}
           {isProfile && <Throughput id={id!} />}
@@ -179,6 +181,11 @@ export default function Aging({ battery, batteries = [], selectBattery }: Partia
           </Collapsible>
         </section>
       )}
+
+      <section className="space-y-3 pt-2">
+        <h2 className="text-sm font-semibold text-ink-2">Device, alerts and records</h2>
+        <DeviceAndRecords battery={battery} batteries={batteries} hiddenProfiles={hiddenProfiles} selectBattery={selectBattery} />
+      </section>
     </div>
   );
 }

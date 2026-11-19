@@ -321,3 +321,13 @@ For each physical profile (or one battery) this reads the counted Quick Test Cyc
 - `soh` / `rul`: always `{"status": "unavailable", "value": null}`. The endpoint never produces an SoH or RUL number.
 
 The logic and the per-input explanations are in `iot/backend/short_test_ml.py`.
+
+## Experimental Demo Estimate and single-battery focus
+
+- `GET /api/quick-tests` adds `demo_estimate` per battery, and `GET /api/batteries` adds it under
+  `quick_test_cycles.demo_estimate`: `status` (`demo` | `no_estimate`), `label` ("Experimental Demo Estimate"),
+  `soh_pct`, `rul_cycles`, `inputs` (averaged measured values plus apparent resistance and thermal response),
+  `components`, `constants`, `tests_used`, `disclaimer`. Computed by `iot/backend/demo_estimate.py`; it is a
+  documented heuristic, not an ML prediction, and it never writes to the predictions table.
+- `GET /api/health` reports `focus_battery` (setting `BHM_FOCUS_BATTERY`, default `BAT-A-3000`; `SIM-BAT-A-3000` in
+  simulation mode; `null` when empty). The dashboard shows only that profile; every endpoint still serves all profiles.

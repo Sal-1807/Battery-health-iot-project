@@ -44,6 +44,7 @@ from typing import Any, Optional
 
 from fastapi import HTTPException
 
+from . import demo_estimate
 from .assignments import battery_assignment
 from .config import Settings
 from .sessions import _mah, _wh
@@ -516,6 +517,7 @@ def quick_tests(conn: sqlite3.Connection, battery_id: str) -> dict:
         "not_counted": {k: sum(1 for a in attempts if a["status"] == k)
                         for k in ("interrupted", "incomplete", "telemetry_gap", "invalid")},
         "model_status": QUICK_MODEL_STATUS,
+        "demo_estimate": demo_estimate.estimate(cycles, QUICK_TARGET),
     }
 
 

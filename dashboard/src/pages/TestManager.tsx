@@ -277,7 +277,7 @@ export function createBlockedReason(o: {
     if (o.profilesLoading) return "Loading battery profiles…";
     if (o.quickError)
       return `Battery profiles could not be loaded (${o.quickError}). If the backend was started before this update, restart it.`;
-    return "No physical battery profiles found. Check the Batteries page.";
+    return "No physical battery profiles found. Check Battery Analysis → Device, alerts and records.";
   }
   if (!o.selected) return "Choose a battery.";
   if (o.pendingUid)
@@ -289,7 +289,10 @@ export function createBlockedReason(o: {
 export default function TestManager({ battery, batteries = [], batteriesLoading = false }: Partial<PageProps>) {
   const qt = usePoll(() => api.quickTests(), 5000, []);
   const [filter, setFilter] = useState<string>("all");
-  const list = usePoll(() => api.tests(filter === "all" ? undefined : filter), 5000, [filter]);
+  const only = batteries.filter((b) => b.managed && !b.archived).length === 1
+    ? batteries.find((b) => b.managed && !b.archived)!.battery_id : null;
+  const listFilter = only ?? (filter === "all" ? undefined : filter);
+  const list = usePoll(() => api.tests(listFilter), 5000, [listFilter]);
   // Physical profiles come from the same battery list as the global selector; the quick-test
   // overview is only a fallback, so a failing statistics endpoint cannot empty the selector.
   const profileIds = batteries.filter((b) => b.managed && !b.archived).map((b) => b.battery_id);
@@ -331,11 +334,14 @@ export default function TestManager({ battery, batteries = [], batteriesLoading 
       <h1 className="text-xl font-semibold">Quick Tests</h1>
       <HardwareWarning />
 
-      <Card title="Protocol progress" subtitle="3 valid Quick Test Cycles of 300 s per battery · 9 tests in total">
+      <Card
+        title="Protocol progress"
+        subtitle={BATS.length === 1 ? "3 valid Quick Test Cycles of 300 s" : `3 valid Quick Test Cycles of 300 s per battery · ${BATS.length * 3} tests in total`}
+      >
         {qt.error && <ErrorBox message={`Quick Test overview unavailable: ${qt.error.message}`} />}
         {qt.loading ? <Loading /> : (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            {(qt.data?.batteries ?? []).map((b) => (
+            {(qt.data?.batteries ?? []).filter((b) => BATS.includes(b.battery_id)).map((b) => (
               <div key={b.battery_id} className="rounded-lg border border-line bg-panel-2 px-4 py-3">
                 <div className="flex items-center justify-between">
                   <p className="font-medium text-ink">{b.battery_id}</p>
@@ -362,7 +368,7 @@ export default function TestManager({ battery, batteries = [], batteriesLoading 
           </div>
         )}
         <div className="mt-4 flex flex-wrap items-end gap-3">
-          <label className="text-xs text-ink-3">
+          <label className={`text-xs text-ink-3 ${BATS.length === 1 ? "sr-only" : ""}`}>
             Battery
             <select aria-label="New test battery" value={newBat} onChange={(e) => setNewBat(e.target.value)}
                     className="ml-2 rounded-lg border border-line bg-panel-2 px-2.5 py-1.5 text-sm text-ink">
@@ -389,7 +395,7 @@ export default function TestManager({ battery, batteries = [], batteriesLoading 
           <TestDetail uid={current} onChanged={() => { list.reload(); qt.reload(); }} />
         </Card>
       ) : (
-        <EmptyState title="No tests yet">Select the connected battery on the Batteries page, then create a Quick Test.</EmptyState>
+        <EmptyState title="No tests yet">Select the connected battery under Battery Analysis → Device, alerts and records, then create a Quick Test.</EmptyState>
       )}
 
       <Card
@@ -397,9 +403,11 @@ export default function TestManager({ battery, batteries = [], batteriesLoading 
         subtitle="Every test is kept. Only valid 300 s tests count as Quick Test Cycles."
         actions={
           <div className="flex items-center gap-2">
-            <Segmented label="Battery filter" value={filter} onChange={setFilter}
-                       options={[{ value: "all", label: "All" }, ...BATS.map((b) => ({ value: b, label: b }))]} />
-            <a href={api.testsCsvUrl(filter === "all" ? undefined : filter)} download
+            {BATS.length > 1 && (
+              <Segmented label="Battery filter" value={filter} onChange={setFilter}
+                         options={[{ value: "all", label: "All" }, ...BATS.map((b) => ({ value: b, label: b }))]} />
+            )}
+            <a href={api.testsCsvUrl(listFilter)} download
                className="inline-flex items-center gap-1 rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">
               <Download size={12} /> Export CSV
             </a>

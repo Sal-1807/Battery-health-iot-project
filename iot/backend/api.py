@@ -130,6 +130,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         db_ok = db.ping()
         return {"status": "ok" if db_ok and models.loaded else "degraded", "api_version": __version__,
                 "mode": s.mode,
+                "focus_battery": (f"SIM-{s.focus_battery}" if s.mode == "simulation" else s.focus_battery)
+                if s.focus_battery else None,
                 "server_time": now_iso(), "started_at": started, "database": {"ok": db_ok, "path": str(s.db_path)},
                 "models": {"loaded": models.loaded, "version": models.version, "error": models.error}}
 

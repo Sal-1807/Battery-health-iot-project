@@ -93,14 +93,14 @@ The firmware's `BATTERY_ID` is fixed in `config.h` and can't know which cell is 
 
 1. Stop any load and disconnect the current cell.
 2. Connect the next cell.
-3. Dashboard → **Batteries** → *Physically connected battery* → choose it → **Switch** → **Confirm switch**.
+3. Dashboard → **Battery Analysis** → *Device, alerts and records* → *Connected battery* → choose it → **Switch** → **Confirm switch**.
 4. Verify presence on the Overview page: confirm after checking the voltage with a multimeter, or let load current verify it.
 
 From the moment of the switch, readings are stored under the selected battery. If no battery is selected, readings go to `UNASSIGNED-<device>` and are never attributed to a profile.
 
 ## 3c. Recording a Quick Test (3 × 300 s per battery)
 
-1. On the **Batteries** page, select the connected cell.
+1. Under **Battery Analysis → Device, alerts and records**, check that the connected cell is selected.
 2. On the **Quick Tests** page, press **New 5-minute Quick Test** and complete the checklist (supervisor name, cutoff voltage, load resistance and its power rating).
 3. Press **Start recording**, then physically connect the load. Pressing the button doesn't connect anything.
 4. Watch the cell voltage and temperature yourself during the 5 minutes.

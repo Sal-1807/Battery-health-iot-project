@@ -6,7 +6,6 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import fixture from "./fixtures/simulation.json";
 import App from "../App";
-import Batteries from "../pages/Batteries";
 import Aging from "../pages/Aging";
 import TestManager from "../pages/TestManager";
 import { fmt } from "../lib/format";
@@ -53,19 +52,21 @@ describe("dashboard against simulation results", () => {
     await screen.findByText(/SIMULATION MODE — every value on this dashboard is synthetic/);
   });
 
-  it("Batteries comparison matches simulated EFC and completed cycles, labelled SIMULATED", async () => {
+  it("focuses the dashboard on SIM-BAT-A-3000; the other simulated profiles stay in the data", async () => {
     serveFixture();
-    render(<Batteries selectBattery={() => {}} />);
-    await screen.findAllByText("SIM-BAT-C-2500");
-    expect(screen.getAllByText("SIMULATED").length).toBe(3);
-    for (const r of compare) {
-      const row = screen.getAllByText(r.battery_id).map((el) => el.closest("tr")).find(Boolean)!;
-      expect(within(row).getByText(fmt(r.stats.equivalent_full_cycles, 3))).toBeTruthy();
-      expect(within(row).getByText(`${fmt(r.rated_capacity_mah, 0)} mAh`)).toBeTruthy();
-    }
+    render(<App />);
+    expect((fx["/api/health"] as { focus_battery: string }).focus_battery).toBe("SIM-BAT-A-3000");
+    const sel = (await screen.findByLabelText("Select battery")) as HTMLSelectElement;
+    await waitFor(() => expect(sel.value).toBe("SIM-BAT-A-3000"));
+    const opts = [...sel.options].map((o) => o.value);
+    expect(opts).not.toContain("SIM-BAT-B-3000");
+    expect(opts).not.toContain("SIM-BAT-C-2500");
+    expect(compare.map((r) => r.battery_id)).toEqual(expect.arrayContaining(["SIM-BAT-B-3000", "SIM-BAT-C-2500"]));
+    // simulated throughput facts are unchanged by the focus
     const c = compare.find((r) => r.battery_id === "SIM-BAT-C-2500")!;
     expect(c.stats.completed_cycles).toBe(2);
-    expect(compare.find((r) => r.battery_id === "SIM-BAT-B-3000")!.stats.completed_cycles).toBe(0);  // partial only
+    expect(c.stats.equivalent_full_cycles).toBeCloseTo(c.stats.total_discharged_mah / 2500, 6);
+    expect(compare.find((r) => r.battery_id === "SIM-BAT-B-3000")!.stats.completed_cycles).toBe(0);
   });
 
   it("Battery Analysis shows the simulated retention and throughput for SIM-BAT-C-2500", async () => {

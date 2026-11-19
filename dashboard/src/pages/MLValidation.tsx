@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, FlaskConical, ShieldAlert, XCircle } from "lucide-react";
-import { api, type MlFold, type QuickAssessment, type RegMetrics } from "../lib/api";
+import { FlaskConical, ShieldAlert } from "lucide-react";
+import type { PageProps } from "../App";
+import { api, type BatterySummary, type MlFold, type RegMetrics } from "../lib/api";
+import { DemoEstimateTiles, DemoPill } from "../components/demo";
 import { usePoll } from "../lib/hooks";
 import { fmt } from "../lib/format";
 import { CycleChart } from "../components/charts";
@@ -81,116 +83,68 @@ function FoldPanel({ fold }: { fold: MlFold }) {
   );
 }
 
-/** SoH / RUL status for the three physical batteries. Only gate-passing cycles produce a value, labelled experimental. */
-function PhysicalPredictions({ quick }: { quick: QuickAssessment[] }) {
-  const b = usePoll(() => api.batteries(), 15000, []);
-  const rows = (b.data?.batteries ?? []).filter((x) => !x.archived);
-  const qa = (id: string) => quick.find((q) => q.battery_id === id);
-  return (
-    <Card
-      title="Physical batteries"
-      subtitle="The saved NASA models need a complete discharge cycle whose features lie inside the NASA training range"
-    >
-      {b.loading ? <Loading /> : (
-        <Table head={["Battery", "Quick Tests", "Predicted SoH", "Predicted RUL", "Status", "Reason"]}>
-          {rows.map((x) => {
-            const v = x.latest_valid_prediction;
-            const exp = v?.status === "experimental";
-            const q = qa(x.battery_id);
-            const reason = exp
-              ? "Model inputs inside the NASA training range; not independently validated for this cell"
-              : q && q.quick_tests.count > 0
-                ? `${Math.min(q.quick_tests.count, q.quick_tests.target)} measured 300 s Quick Tests. They are partial discharges, not the complete-cycle inputs the saved models need, and no defensible short-test model exists (see below).`
-                : x.latest_prediction?.reasons?.[0] ??
-                  "No complete discharge cycle recorded. 300 s Quick Tests are not complete discharge records, so the cycle-level models cannot be applied.";
-            return (
-              <tr key={x.battery_id}>
-                <td className="px-3 py-2 font-medium text-ink">{x.battery_id}</td>
-                <td className="px-3 py-2">{q ? `${Math.min(q.quick_tests.count, q.quick_tests.target)} / ${q.quick_tests.target}` : "—"}</td>
-                <td className="px-3 py-2">{exp ? `${fmt(v!.soh_pct, 1)} %` : "—"}</td>
-                <td className="px-3 py-2">{exp ? `${fmt(v!.rul_cycles, 0)} cycles` : "—"}</td>
-                <td className="px-3 py-2">
-                  {exp ? <Pill tone="warning">Experimental ML Estimate</Pill> : <Pill tone="neutral">Not available</Pill>}
-                </td>
-                <td className="max-w-lg whitespace-normal px-3 py-2 text-xs text-ink-3">{reason}</td>
-              </tr>
-            );
-          })}
-        </Table>
-      )}
-      <p className="mt-3 text-xs text-ink-3">
-        Quick-test measurements can be exported for experimental analysis:{" "}
-        <a className="text-accent underline" href={api.quickFeaturesCsvUrl()} download>
-          quick_test_features.csv
-        </a>
-        . No validated capacity, SoH or RUL model exists for them.
-      </p>
-    </Card>
-  );
-}
-
-const KIND_LABEL = { missing: "not measured", different_quantity: "different quantity", out_of_regime: "outside NASA regime" } as const;
-const QT_COLS: [string, string, number][] = [
-  ["initial_voltage_v", "Start V", 3], ["final_voltage_v", "End V", 3], ["voltage_drop_v", "V drop", 3],
-  ["mean_current_a", "Avg I (A)", 3], ["mean_power_w", "Avg P (W)", 3], ["max_temperature_c", "Max T (°C)", 1],
-  ["delivered_mah", "mAh", 1], ["delivered_wh", "Wh", 3],
+const INPUT_LABEL: [string, string, number][] = [
+  ["initial_voltage_v", "Initial voltage (V)", 3], ["final_voltage_v", "Final voltage (V)", 3], ["voltage_drop_v", "Voltage drop (V)", 3],
+  ["mean_current_a", "Average current (A)", 3], ["mean_power_w", "Average power (W)", 3], ["max_temperature_c", "Max temperature (°C)", 1],
+  ["temperature_rise_c", "Temperature rise (°C)", 2], ["delivered_mah", "Discharged (mAh)", 1], ["delivered_wh", "Delivered (Wh)", 3],
+  ["apparent_resistance_ohm", "Apparent resistance ΔV/I (Ω)", 3], ["thermal_k_per_w", "Thermal response ΔT/P (K/W)", 2],
 ];
 
-/** Measured Quick Test features vs the saved-model inputs, and whether a short-test model is defensible. */
-function QuickTestAssessment({ data }: { data: QuickAssessment[] }) {
-  const withTests = data.filter((d) => d.quick_tests.count > 0);
-  const [picked, setPicked] = useState<string | null>(null);
-  const a = withTests.find((d) => d.battery_id === picked) ?? withTests[0];
-  if (!a) return null;
+/** Demo heuristic scores for the visible battery profiles. Never an ML output. */
+function DemoEstimates({ batteries }: { batteries: BatterySummary[] }) {
+  const rows = batteries.filter((b) => b.managed && !b.archived);
+  const main = rows[0];
+  if (!main) return null;
+  const e = main.quick_test_cycles?.demo_estimate;
   return (
-    <Card
-      title={`Why Quick Tests give no SoH / RUL — ${a.battery_id}`}
-      subtitle="Measured values from the counted 300 s Quick Tests, compared with what the saved models need"
-      actions={withTests.length > 1 && (
-        <Segmented label="Assessed battery" value={a.battery_id} onChange={setPicked}
-                   options={withTests.map((d) => ({ value: d.battery_id, label: d.battery_id }))} />
-      )}
-    >
-      <Table head={["Quick Test", ...QT_COLS.map((c) => c[1])]}>
-        {a.quick_tests.measured.map((m) => (
-          <tr key={m.test_uid}>
-            <td className="px-3 py-1.5 text-ink">Test {m.number}/{a.quick_tests.target}</td>
-            {QT_COLS.map(([k, , d]) => <td key={k} className="px-3 py-1.5">{fmt(m[k] as number | null, d)}</td>)}
-          </tr>
-        ))}
+    <section className="space-y-4">
+      <h2 className="text-base font-semibold">{main.battery_id}</h2>
+      <DemoEstimateTiles e={e} />
+      <Table head={["Battery", "Quick Tests", "Demo SoH Estimate (%)", "Demo RUL Estimate (cycles)", "Status"]}>
+        {rows.map((b) => {
+          const d = b.quick_test_cycles?.demo_estimate;
+          const ok = d?.status === "demo";
+          return (
+            <tr key={b.battery_id}>
+              <td className="px-3 py-2 font-medium text-ink">{b.battery_id}</td>
+              <td className="px-3 py-2">{Math.min(b.quick_test_cycles?.count ?? 0, b.quick_test_cycles?.target ?? 3)} / {b.quick_test_cycles?.target ?? 3}</td>
+              <td className="px-3 py-2 text-base font-semibold text-ink">{ok ? fmt(d!.soh_pct, 1) : "—"}</td>
+              <td className="px-3 py-2 text-base font-semibold text-ink">{ok ? d!.rul_cycles : "—"}</td>
+              <td className="px-3 py-2">{ok ? <DemoPill /> : <Pill tone="neutral">No estimate yet</Pill>}</td>
+            </tr>
+          );
+        })}
       </Table>
-      <p className="mt-3 text-sm text-ink-2">
-        <span className="font-medium text-ink">Saved NASA models: not applicable. </span>{a.saved_model.reason}
-      </p>
-      <div className="mt-3">
-        <Collapsible title="Model inputs vs. Quick Test measurements (10 inputs)">
-          <Table head={["Model input", "NASA training range", "Quick Test value", "Compatibility", "Why"]}>
-            {a.saved_model.inputs.map((x) => (
-              <tr key={x.model_input}>
-                <td className="px-3 py-1.5 text-ink">{x.model_input}</td>
-                <td className="px-3 py-1.5">{x.nasa_training_range ? `${fmt(x.nasa_training_range.min, 2)} – ${fmt(x.nasa_training_range.max, 2)}` : "—"}</td>
-                <td className="px-3 py-1.5">{x.quick_values.length ? x.quick_values.map((v) => fmt(v, 3)).join(", ") : "—"}</td>
-                <td className="px-3 py-1.5"><Pill tone="neutral">{KIND_LABEL[x.kind]}</Pill></td>
-                <td className="max-w-md whitespace-normal px-3 py-1.5 text-xs text-ink-3">{x.reason}</td>
-              </tr>
+      {e?.status === "demo" && e.inputs && (
+        <Collapsible title="Method and inputs">
+          <p className="text-sm text-ink-2">
+            A documented arithmetic heuristic (<code className="font-mono text-xs">iot/backend/demo_estimate.py</code>), not a
+            machine-learning model. Inputs are averages of the measured Quick Tests:
+          </p>
+          <p className="mt-2 font-mono text-xs text-ink">
+            SoH = 100 − {e.constants?.soh_points_per_r_doubling} × max(0, R ÷ {e.constants?.r_ref_ohm} Ω − 1) − thermal penalty (≤ {e.constants?.thermal_cap_points}) ·
+            RUL = {e.constants?.rated_cycle_life} × (SoH − {e.constants?.eol_soh_pct}) ÷ {100 - (e.constants?.eol_soh_pct ?? 80)}
+          </p>
+          <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+            {INPUT_LABEL.map(([k, label, d]) => (
+              <div key={k} className="flex justify-between gap-3 border-b border-line/50 py-1">
+                <dt className="text-ink-3">{label}</dt>
+                <dd className="tabular text-ink">{fmt(e.inputs![k], d)}</dd>
+              </div>
             ))}
-          </Table>
+          </dl>
+          <p className="mt-3 text-xs text-ink-3">
+            Reference constants are illustrative assumptions, not calibrated values. Tests used: {e.tests_used.join(", ")}.
+          </p>
         </Collapsible>
-      </div>
-      <h3 className="mt-4 text-sm font-semibold text-ink">Could an experimental short-test model be built?</h3>
-      <ul className="mt-2 space-y-1.5 text-sm">
-        {a.short_test_model.checks.map((c) => (
-          <li key={c.requirement} className="flex items-start gap-2">
-            {c.met ? <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-good" /> : <XCircle size={15} className="mt-0.5 shrink-0 text-critical" />}
-            <span><span className="text-ink">{c.requirement}.</span> <span className="text-ink-3">{c.detail}</span></span>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-3 rounded-lg border border-line bg-panel-2 px-4 py-2.5 text-sm text-ink">
-        <span className="font-medium">Result: </span>{a.short_test_model.conclusion}
+      )}
+      <p className="text-xs text-ink-3">
+        Saved ML model on {main.battery_id}:{" "}
+        {main.latest_valid_prediction?.status === "experimental"
+          ? `Experimental ML Estimate ${fmt(main.latest_valid_prediction.soh_pct, 1)} % SoH, ${fmt(main.latest_valid_prediction.rul_cycles, 0)} cycles RUL.`
+          : "not applied (it needs a complete discharge cycle). The model is demonstrated on NASA data below."}
       </p>
-      <p className="mt-2 text-xs text-ink-3">{a.note}</p>
-    </Card>
+    </section>
   );
 }
 
@@ -245,10 +199,9 @@ function ModelDemo() {
   );
 }
 
-export default function MLValidation() {
+export default function MLValidation({ batteries = [] }: Partial<PageProps>) {
   const [cell, setCell] = useState<Cell>("B0005");
   const sum = usePoll(() => api.mlValidation(), 0, []);
-  const qa = usePoll(() => api.quickAssessment(), 15000, []);
   const det = usePoll(() => api.mlValidationCell(cell), 0, [cell]);
 
   const data = useMemo(
@@ -273,9 +226,7 @@ export default function MLValidation() {
         <FlaskConical size={18} className="text-ink-3" /> Battery Health Predictions
       </h1>
 
-      {qa.error && <ErrorBox message={`Quick Test assessment unavailable: ${qa.error.message}`} />}
-      <PhysicalPredictions quick={qa.data?.batteries ?? []} />
-      {qa.data && <QuickTestAssessment data={qa.data.batteries} />}
+      <DemoEstimates batteries={batteries} />
       <ModelDemo />
 
       <div className="flex flex-wrap items-center gap-3 pt-2">

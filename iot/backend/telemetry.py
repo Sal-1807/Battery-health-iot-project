@@ -260,7 +260,7 @@ def battery_summary(conn: sqlite3.Connection, b: dict, now: datetime, s: Optiona
 def _qt_summary(conn: sqlite3.Connection, battery_id: str) -> dict:
     from .battery_tests import quick_tests
     q = quick_tests(conn, battery_id)
-    return {"count": q["count"], "target": q["target"], "last": q["last"]}
+    return {"count": q["count"], "target": q["target"], "last": q["last"], "demo_estimate": q["demo_estimate"]}
 
 
 def history(conn: sqlite3.Connection, battery_id: str, start: Optional[datetime], end: Optional[datetime],
