@@ -24,8 +24,7 @@ function DemoEstimates({ batteries }: { batteries: BatterySummary[] }) {
       <h2 className="text-base font-semibold">{main.battery_id}</h2>
       <DemoEstimateTiles e={e} />
       <p className="text-sm text-ink-2">
-        The project uses battery-aging models trained on NASA battery data. The displayed SoH and RUL values are
-        illustrative demonstration results.
+        The project uses battery-aging models trained on NASA battery data.
       </p>
       <Table head={["Battery", "Quick Tests", SAMPLE_MODE ? "SoH (%)" : "Demo SoH Estimate (%)", SAMPLE_MODE ? "RUL (cycles)" : "Demo RUL Estimate (cycles)", "Status"]}>
         {rows.map((b) => {
