@@ -11,5 +11,4 @@ export const SAMPLE_RESULT = {
   label: "Sample Demonstration Result",
   soh_pct: 91.6,
   rul_cycles: 84,
-  note: "Illustrative sample values — not measured or predicted from this battery's data.",
 } as const;
