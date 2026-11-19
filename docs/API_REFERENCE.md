@@ -216,7 +216,7 @@ Profiles `BAT-A-3000` (3000 mAh), `BAT-B-3000` (3000 mAh) and `BAT-C-2500` (2500
 - **EFC** (equivalent full cycles) = total measured discharge ÷ *that battery's* rated capacity: a throughput figure.
 - **Completed cycles** counts only sessions that ran from a rested full charge (≥ 4.15 V) to the cutoff with no telemetry gaps. A short session never counts as a cycle.
 
-SoH/RUL predictions are always `unavailable` for managed profiles.
+`soh` in the comparison is `experimental` if the battery has any gate-passing Experimental ML Estimate, otherwise `unavailable`. `quick_test_cycles` is the number of valid Quick Test Cycles. `GET /api/batteries` marks every battery with `archived` (true for retired IDs such as `CELL-18650-01`, `UNASSIGNED-*` and older demo data); archived records are read-only history.
 
 ## NASA ML validation demo (separate from live hardware)
 
@@ -224,6 +224,7 @@ SoH/RUL predictions are always `unavailable` for managed profiles.
 |---|---|
 | `GET /api/ml-validation` | Leave-one-cell-out results for B0005, B0006 and B0018. Per held-out cell: SoH MAE/RMSE; EOL classifier accuracy, precision, recall, F1 and confusion matrix; RUL regressor alone (pre-EOL cycles) MAE/RMSE; two-stage RUL MAE/RMSE; baselines; RUL error by life stage; observed/censored EOL. Also mean ± std across folds, a reproduction check against `results/lobo_predictions.csv`, the protocol and the disclaimer. |
 | `GET /api/ml-validation/{cell}` | Per-cycle actual, predicted and baseline SoH and RUL for one held-out cell |
+| `GET /api/ml-validation/{cell}/demo?cycle=N` | Model demonstration on one **real NASA dataset cycle**: its features, the measured SoH/RUL, the saved production models' output (in-sample, labelled as such) and the held-out leave-one-cell-out prediction for the same cycle. Never applied to BAT-A/B/C. |
 
 How the evaluation models are built:
 
@@ -256,7 +257,8 @@ How the evaluation models are built:
 
 | Route | Description |
 |---|---|
-| `POST /api/tests` | `{"battery_id": "BAT-A-3000", "notes": "..."}` creates a test with a unique ID, e.g. `T-20261119-BAT-A-3000-001`. Physical profiles only. |
+| `POST /api/tests` | `{"battery_id": "BAT-A-3000", "notes": "...", "kind": "quick"}` creates a test with a unique ID, e.g. `T-20261119-BAT-A-3000-001`. Physical profiles only. `kind` is `quick` (default; 300 s window, `duration_s` 60–3600 may override) or `supervised` (open-ended legacy test). 409 while the previous test on that battery still awaits a disconnect confirmation. |
+| `POST /api/tests/{uid}/confirm-disconnect` | The operator states that the load was **physically** removed. 409 while the latest reading is recent and shows load current (≥ 0.02 A). Recorded as a confirmation, not a hardware action. |
 | `PUT /api/tests/{uid}/checklist` | Confirmations (identity, load rating, supervisor approval, disconnect procedure, cutoff) plus `supervisor_name`, `cutoff_v` (2.5–3.3 V), `load_resistance_ohm`, `load_power_rating_w`. The test becomes `ready` when complete and the battery is selected on a device. A load rated below its 4.2 V dissipation is refused. |
 | `POST /api/tests/{uid}/start\|pause\|resume\|complete\|abort` | Changes the **software** state only. 409 on an invalid transition, a changed battery selection, or another active test on the same battery or device. Every response includes `hardware_notice`; pause, complete and abort also return `warning` ("Physically disconnect the discharge load now"). |
 | `GET /api/tests?battery_id=&state=` | All tests with results, validity checks and measured hardware state |
@@ -287,3 +289,22 @@ A completed test that didn't reach the cutoff is classified as `partial discharg
 - `throughput` is the **measured discharge throughput**: charge, energy and time from *all* sessions, partial ones included. It reports the partial and full contributions separately and gives EFC = throughput ÷ the battery's own rating. It is not the battery's capacity.
 - A session overlapping an earlier one in time is excluded and listed in `overlapping_sessions_excluded`, so charge is never counted twice. Duplicate telemetry is already rejected at ingest.
 - **Measured full capacity**, retention and completed cycles still come only from full tests. Thresholds are unchanged: 4.15 V rested start, 3.0 V default cutoff.
+
+## Quick Test Cycles (3 × 300 s per battery)
+
+| Route | Description |
+|---|---|
+| `GET /api/quick-tests?battery_id=` | Per profile: valid Quick Test Cycles (`count` / `target` = 3), `next_test_number`, per-test metrics, every attempt with its status, summary (mean/min/max over the first 3 valid tests) and counts of tests not counted. Also the A/B/C `comparison` (each metric with `_range` and `_diff_pct` vs. the group mean), `model_status` and `protocol`. |
+| `GET /api/quick-tests/features.csv` | One row per valid Quick Test with its measured features, for experimental analysis. The first line states that no validated model exists for these features. |
+
+Each quick test in `/api/tests` carries a `quick_test` block: `status` (`counted`, `incomplete`, `interrupted`, `telemetry_gap`, `invalid`, `in_progress`, `not_started`), `number`, `elapsed_s`, `remaining_s`, `auto_ended`, `needs_disconnect_confirmation` and the validity `checks`.
+
+**Automatic end.** When a running quick test reaches `started + duration_s`, the backend completes its *software record* at exactly that time with the note "software recording window ended automatically; this did NOT disconnect the battery or stop the discharge current". This happens on the next request to the tests, quick-tests or batteries endpoints.
+
+**Counted** only if: completed (not aborted), never paused, battery stayed selected, the full window was recorded, load current present for ≥ 280 s with charge delivered, no telemetry gaps, ≤ 2 % readings with a missing value, ≥ 30 readings. Priority when several fail: interrupted > telemetry gap > incomplete.
+
+**Metrics:** initial voltage (last at-rest reading before start), final voltage, voltage drop, mean voltage (Wh ÷ Ah), mean current, mean power, max temperature, temperature rise, discharged mAh, delivered Wh. A Quick Test is not a full cycle: it does not change EFC rules, completed cycles or measured full capacity.
+
+## ML predictions for physical batteries
+
+After each complete discharge cycle the backend calls the saved models through the gate in `iot/backend/model_service.py`. A result is stored as `experimental` only if the cycle is complete, every feature lies inside the NASA training range widened by 10 % of that range, and the cycle number is known; otherwise `unavailable` with the reasons. Physical batteries never get any other status.

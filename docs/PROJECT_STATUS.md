@@ -150,12 +150,12 @@ Reported by the team from the Serial Monitor:
 - **Routing:** readings follow time-ranged device assignments selected in the dashboard (Batteries page). Uncovered readings go to `UNASSIGNED-<device>`.
 - **Switching:** ends sessions and segments with `battery_switched` and clears presence evidence.
 - **Cycle counts:** EFC (throughput ÷ own rating) is tracked separately from completed experimental cycles (rested full charge to cutoff, no gaps).
-- **SoH/RUL:** never produced for physical profiles. The NASA replay demonstration is unchanged.
+- **SoH/RUL:** originally never produced for physical profiles. *Superseded in §17:* a gate-passing result is now shown as an Experimental ML Estimate.
 - **Not covered:** charging is not instrumented (there is no charge-current path through the INA219). A "completed cycle" is therefore inferred from a rested full-charge voltage before the discharge, not from a measured charge.
 
 ## 12. NASA ML validation demo — added 2026-11-19
 
-Dashboard page **ML validation** (API `/api/ml-validation`) shows leave-one-cell-out results for B0005, B0006 and B0018:
+Dashboard page **ML validation** (now part of *Battery Health Predictions*) (API `/api/ml-validation`) shows leave-one-cell-out results for B0005, B0006 and B0018:
 
 - The evaluation models reproduce the committed `results/lobo_predictions.csv` exactly.
 - The EOL classifier and the RUL regressor are reported separately, next to the two-stage output.
@@ -170,7 +170,7 @@ Three cells cannot support a robust accuracy claim. The predictions are not vali
 
 ## 13. Aging analytics — added 2026-11-19
 
-The **Aging analytics** page covers BAT-A, BAT-B and BAT-C:
+The **Aging analytics** page (now *Battery Analysis*) covers BAT-A, BAT-B and BAT-C:
 
 - **Totals:** delivered mAh and Wh, discharge time, and EFC normalised by each battery's own rating.
 - **Capacity:** measured capacity across comparable full tests.
@@ -182,7 +182,7 @@ The **Aging analytics** page covers BAT-A, BAT-B and BAT-C:
 
 ## 14. Battery Test Manager — added 2026-11-19
 
-The **Test Manager** page records supervised discharge experiments for BAT-A, BAT-B and BAT-C:
+The **Test Manager** page (now *Quick Tests*) records supervised discharge experiments for BAT-A, BAT-B and BAT-C:
 
 - **States:** Not Started, Ready, Running, Paused, Completed, Aborted.
 - **Checklist:** must be complete before a test can start.
@@ -199,3 +199,30 @@ Migration v7 adds the `battery_tests` table; existing records are unchanged.
 ## 16. Pre-hardware readiness audit — 2026-11-19
 
 Seven defects were found and fixed: database/mode isolation, no SoH on legacy hardware IDs, false offline alerts after a switch, reversed-current reporting, and device-ID mismatch warning. The checklist is in [READINESS.md](READINESS.md). Physical discharge remains **BLOCKED** on the protection hardware (HARDWARE_SETUP §5).
+
+## 17. Final submission: Quick Test protocol and 5-section dashboard — 2026-11-19
+
+**Protocol.** Each of BAT-A-3000, BAT-B-3000 and BAT-C-2500 is measured with 3 Quick Test Cycles of 300 s (9 in total).
+The software ends the *recording* at 300 s and states that this does not disconnect the battery or stop the current. The
+next test is blocked until the operator confirms the physical disconnection; the backend refuses that confirmation while
+load current is still measured. Interrupted, incomplete and telemetry-gap tests are kept but not counted. Quick Tests do
+not change EFC, completed cycles or measured full capacity. Initial voltage now comes from the last at-rest reading
+before the start, so a test started with the load already connected no longer reports a loaded voltage as its start.
+
+**Dashboard.** Reduced to Overview, Batteries, Quick Tests, Battery Analysis and Battery Health Predictions. Old URLs
+(`#/live`, `#/history`, `#/aging`, `#/health`, `#/alerts`, `#/system`) redirect to the matching section. Alerts,
+thresholds and system status moved into collapsed sections on the Batteries page, which mount (and poll) only when
+opened. Retired IDs (`CELL-18650-01`), `UNASSIGNED-*` and older demo data are hidden from the main views and remain
+readable under Batteries → Archived records. No data was deleted.
+
+**ML policy change (requested for the final submission).** Physical batteries can now show an **Experimental ML
+Estimate** when a complete discharge cycle passes the model gate (all inputs inside the NASA range widened by 10 % of
+that range, known cycle count). Anything else is **Not available** with the reason. Quick Tests are not complete
+cycles, so on the current data the physical batteries show *Not available*. A selectable demo runs the saved models on
+real NASA dataset cycles, labelled in-sample and shown next to the held-out prediction; it is never attributed to
+BAT-A/B/C.
+
+**Removed (confirmed unused):** the old Health page, the discharge-session panel component and unused NASA API types.
+Datasets, models, migrations, safety logic and experiment history are unchanged.
+
+**Verification:** backend 170 tests, dashboard 44 tests, simulation 52/52 checks, TypeScript and production build pass.

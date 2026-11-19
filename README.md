@@ -1,35 +1,69 @@
 # Battery Health Monitoring with RUL Prediction (IoT + ML)
 
-ESP32 telemetry (INA219 voltage/current, DS18B20 temperature) → FastAPI + SQLite →
-cycle aggregation → NASA-trained State-of-Health (SoH) / Remaining-Useful-Life (RUL)
-models → React dashboard.
+ESP32 telemetry (INA219 voltage/current, DS18B20 temperature) → USB serial bridge → FastAPI + SQLite →
+measured discharge statistics and 5-minute Quick Test Cycles → React dashboard, with NASA-trained
+State-of-Health (SoH) / Remaining-Useful-Life (RUL) models shown as **experimental** estimates only.
 
-> **Status (2026-11):** sensors bench-tested by the team; backend, firmware and dashboard
-> implemented and tested in software (see [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)).
-> **No real battery discharge has been recorded yet**, and the ML models are validated only
-> on NASA cells. On live data, SoH/RUL are shown as *experimental* or *unavailable*, never
-> as validated results.
+> **Status (2026-11):** sensors, backend, bridge and dashboard work end to end on the bench.
+> Batteries BAT-A-3000, BAT-B-3000 and BAT-C-2500 are each measured with **3 Quick Test Cycles of 300 s**.
+> The ML models are validated only on NASA cells. On the team's batteries they produce at most a gated
+> **Experimental ML Estimate**, never a validated SoH/RUL, and no capacity is inferred from a 5-minute test.
 
 Documentation: [Project status](docs/PROJECT_STATUS.md) · [Architecture](docs/ARCHITECTURE.md) ·
 [Hardware setup](docs/HARDWARE_SETUP.md) · [API reference](docs/API_REFERENCE.md) ·
-[Dataset assessment](docs/dataset_assessment.md)
+[Simulation](docs/SIMULATION.md) · [Readiness audit](docs/READINESS.md) · [Dataset assessment](docs/dataset_assessment.md)
 
 ---
 
 ## Architecture
 
 ```
-ESP32 (INA219 + DS18B20) ──HTTP JSON──▶ FastAPI (iot/backend) ──▶ SQLite
-simulator (iot/simulator) ─────────────▶   │  validate · store · alert
-                                            │  readings → discharge segments → features
-                                            │  gated inference with models/*.pkl
-                                            ▼
-                              React dashboard (dashboard/)  ◀── polling /api/*
+ESP32 (INA219 + DS18B20) ──USB serial──▶ iot/bridge/serial_bridge.py ──HTTP JSON──▶ FastAPI (iot/backend) ──▶ SQLite
+                         (or Wi-Fi HTTP) ─────────────────────────────────────────▶   │ validate · cell-presence · store
+                                                                                       │ device → battery assignment
+                                                                                       │ discharge sessions (mAh, Wh, EFC)
+                                                                                       │ Quick Test protocol · alerts
+                                                                                       │ gated inference with models/*.pkl
+                                                                                       ▼
+                                                                  React dashboard (dashboard/) ◀── polling /api/*
 
 offline: NASA .mat → src/extract_battery_data.py → src/build_features.py → src/train_models.py → models/*.pkl
 ```
 
 Details and the data model: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Dashboard
+
+Five sections:
+
+| Section | What it shows |
+|---|---|
+| **Overview** | Live sensor readings of the selected battery (voltage, current, temperature, power), INA219 / DS18B20 / cell-presence status, live charts, Quick Test progress (n / 3), active alerts. |
+| **Batteries** | Which battery is physically connected (switch with confirmation), the A/B/C comparison (rated capacity, Quick Test Cycles, throughput mAh / Wh, EFC, full cycles, SoH/RUL status), and collapsed sections for alerts & thresholds, system status and the **read-only archive**. |
+| **Quick Tests** | The 3 × 300 s protocol per battery: progress, create/start/stop, live countdown, the physical-disconnect step, validity checks and the history of every attempt with CSV export. |
+| **Battery Analysis** | A/B/C comparison of Quick Test averages (± range, % vs. group mean), per-test trends, measured discharge throughput, measured full capacity (only from complete discharges) and the reading history with CSV export. |
+| **Battery Health Predictions** | SoH / RUL / status for each physical battery (Experimental ML Estimate or Not available, with the reason), a selectable model demo on real NASA dataset cycles, and the leave-one-cell-out validation. |
+
+Retired IDs such as `CELL-18650-01` (used before the battery profiles existed), unassigned readings and older demo data
+are kept unchanged and reachable under **Batteries → Archived records**. They are never merged into BAT-A/B/C.
+
+## Quick Test protocol
+
+A **Quick Test Cycle** is one 5-minute (300 s) measurement under the resistive load. It is *not* a full
+charge–discharge cycle, it does not change the full-cycle count, and it is never used as the battery's capacity.
+
+1. Batteries → select the physically connected battery.
+2. Quick Tests → **New 5-minute Quick Test** → complete the checklist → **Start recording**, then connect the load.
+3. The countdown runs. At 300 s **the software stops recording automatically. This does NOT disconnect the
+   battery or stop the current** — there is no switching hardware.
+4. Physically remove the load, then click **I have physically disconnected the load**. The backend refuses this
+   while it still measures load current, and refuses to start the next test until it is confirmed.
+5. Repeat until each battery has 3 valid tests (9 in total).
+
+A test counts only if it completed the full 300 s window, the battery stayed selected, load current was present for
+≥ 280 s, there were no telemetry gaps, ≤ 2 % missing values and ≥ 30 readings. Otherwise it is listed as
+**interrupted**, **incomplete** or **telemetry gap** and is not counted. Reported per test: voltage drop (from the last
+at-rest reading before start), average current, average power, max temperature, discharged mAh and delivered Wh.
 
 ## Repository structure
 
@@ -40,13 +74,14 @@ Details and the data model: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ├── models/                 metadata.json (committed) + *.pkl (git-ignored, regenerate)
 ├── results/                LOBO metrics/predictions, analyses, experiments
 ├── iot/
-│   ├── backend/            FastAPI app (api.py, telemetry.py, cycles.py, features.py,
-│   │                       model_service.py, alerts.py, nasa.py, db.py, config.py)
-│   ├── simulator/          simulate_esp32.py (synthetic telemetry / NASA replay)
-│   ├── bridge/             serial_bridge.py (USB serial → backend, when Wi-Fi is unavailable)
+│   ├── backend/            FastAPI app (api.py, telemetry.py, sessions.py, battery_tests.py, aging.py,
+│   │                       cycles.py, features.py, model_service.py, ml_validation.py, alerts.py, db.py, config.py)
+│   ├── bridge/             serial_bridge.py (USB serial → backend)
 │   ├── firmware/esp32_battery_monitor/   Arduino sketch + config.example.h
-│   ├── tests/              pytest suite (53 tests)
-│   └── data/               runtime SQLite database (git-ignored)
+│   ├── simulation/         end-to-end simulation runner (separate database)
+│   ├── simulator/          low-level synthetic telemetry / NASA replay generator (developer tool)
+│   ├── tests/              pytest suite
+│   └── data/               runtime SQLite databases (git-ignored)
 ├── dashboard/              React + Vite + TypeScript + Tailwind + Recharts
 └── docs/
 ```
@@ -54,17 +89,16 @@ Details and the data model: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Hardware
 
 ESP32 DevKit V1, INA219 (I²C: SDA GPIO21, SCL GPIO22, 3V3, GND), DS18B20 (DATA GPIO4 with
-4.7 kΩ pull-up to 3V3), 3.7 V 3000 mAh 18650 cell, 10 Ω 5 W resistor. Wiring, firmware
-upload, network setup and the device checks still to be done are in
-[docs/HARDWARE_SETUP.md](docs/HARDWARE_SETUP.md).
+4.7 kΩ pull-up to 3V3), 18650 Li-ion cells (BAT-A 3000 mAh, BAT-B 3000 mAh, BAT-C 2500 mAh, label ratings),
+resistive load. Wiring, firmware upload and the transport options are in [docs/HARDWARE_SETUP.md](docs/HARDWARE_SETUP.md).
 
-> **Safety.** The firmware and backend only *measure* and *alert*. They do not cut off a
-> load or control charging. The cell's protection status is unknown, and no discharge setup has
-> been validated. Read HARDWARE_SETUP.md §5 before connecting the cell to any load.
+> **Safety.** The firmware, backend and dashboard only *measure*, *record* and *alert*. Nothing in this project
+> connects, disconnects or switches the load, cuts off at a voltage, or controls charging. Every test is supervised
+> and the load is removed by hand. Read HARDWARE_SETUP.md §5 before connecting a cell to any load.
 
 ---
 
-## Quick start
+## Setup
 
 All commands run from the repository root unless noted.
 
@@ -77,9 +111,8 @@ pip install -r requirements.txt
 python src/train_models.py       # regenerates models/*.pkl (git-ignored)
 ```
 
-`train_models.py` is deterministic (`random_state=42`). It also rewrites
-`results/lobo_*.csv` and `results/training_metrics.csv`; on the same library versions they
-come out byte-identical (verified), so `git status` should stay clean.
+`train_models.py` is deterministic (`random_state=42`); on the same library versions it reproduces
+`results/lobo_*.csv` byte for byte.
 
 ### 2. Backend
 
@@ -87,9 +120,8 @@ come out byte-identical (verified), so `git status` should stay clean.
 uvicorn iot.backend.main:app --host 0.0.0.0 --port 8000
 ```
 
-`--host 0.0.0.0` lets the ESP32 reach it over the LAN. Check `http://localhost:8000/api/health`
-and the interactive docs at `http://localhost:8000/docs`. The database is created at
-`iot/data/telemetry.db`; override with `BHM_DB_PATH`. Other settings are listed in `iot/backend/config.py`.
+Check `http://localhost:8000/api/health`; interactive API docs at `http://localhost:8000/docs`. The production
+database is `iot/data/telemetry.db` (override with `BHM_DB_PATH`). Settings: `iot/backend/config.py` (`BHM_*`).
 
 ### 3. Dashboard
 
@@ -99,69 +131,64 @@ npm install
 npm run dev          # http://localhost:5173  (proxies /api to localhost:8000)
 ```
 
-Production build: `npm run build && npm run preview` (http://localhost:4173). If the backend runs
-elsewhere, set `BHM_API_URL=http://<host>:8000` before `npm run dev` / `preview`.
+Production build: `npm run build && npm run preview`. If the backend runs elsewhere, set `BHM_API_URL=http://<host>:8000`.
 
-### 4. ESP32
+### 4. ESP32 and the USB bridge
 
-Copy `iot/firmware/esp32_battery_monitor/config.example.h` to `config.h`, set Wi-Fi and
-`BACKEND_BASE_URL=http://<PC LAN IP>:8000`, then upload with the Arduino IDE (board
-"ESP32 Dev Module"; libraries Adafruit INA219, OneWire, DallasTemperature).
-Full steps: [docs/HARDWARE_SETUP.md](docs/HARDWARE_SETUP.md) §3–4.
-
-**No usable Wi-Fi?** (e.g. a WPA2-Enterprise campus network) Set `TRANSPORT_WIFI 0` in `config.h`, upload, close the
-Serial Monitor, and forward the readings over USB:
+Copy `iot/firmware/esp32_battery_monitor/config.example.h` to `config.h`, set `TRANSPORT_WIFI 0` for USB, and upload
+with the Arduino IDE (board "ESP32 Dev Module"; libraries Adafruit INA219, OneWire, DallasTemperature). Close the
+Serial Monitor, then forward the readings:
 
 ```bash
 python -m iot.bridge.serial_bridge --port COM9
 ```
 
-### 5. Demo without hardware (clearly labelled)
+Use your own port (`/dev/ttyUSB0` on Linux). Wi-Fi transport is optional; see [docs/HARDWARE_SETUP.md](docs/HARDWARE_SETUP.md) §3–4.
 
-```bash
-# real NASA cycle features replayed through the model (battery "NASA-B0005")
-python -m iot.simulator.simulate_esp32 nasa-replay --battery B0005
-
-# synthetic ESP32 telemetry in real time (battery "SIM-18650-01", source=simulation)
-python -m iot.simulator.simulate_esp32 telemetry --interval 1 --speedup 300
-
-# or a whole synthetic discharge, back-filled instantly, with a sensor-fault injection
-python -m iot.simulator.simulate_esp32 telemetry --backfill --interval 5 --speedup 20 --fault temp-disconnect
-```
-
-Simulated and replayed batteries carry a permanent banner and "Simulated"/"NASA replay"
-labels in the dashboard. They can never be stored under a hardware battery ID.
-
-## Simulation and verification (no battery needed)
+## Simulation (development only, clearly labelled)
 
 ```bash
 python -m iot.simulation.run
 ```
 
-This runs a full synthetic workflow through the real API, in a separate simulation database. It covers analytic 1000 mAh / 4.000 Wh checks, full and partial discharges, battery switching, gaps, duplicates, out-of-order telemetry, the Test Manager, isolation and CSV exports, and prints a pass/fail report. See [docs/SIMULATION.md](docs/SIMULATION.md), including how to view the simulated data in the dashboard (with a SIMULATION MODE banner).
-
-## End-to-end demonstration
-
-1. Start the backend (step 2) and dashboard (step 3).
-2. Run `nasa-replay` → **Battery health** shows the model on B0005, marked *in-sample*, and below it the
-   held-out (leave-one-battery-out) comparison with real accuracy metrics.
-3. Run the real-time `telemetry` simulator → **Overview** and **Live** update every 2–3 s. When the
-   simulated discharge ends, **History → Discharge cycles** lists the aggregated cycle. **Battery
-   health** explains why no SoH is given: the cycle count is unknown and 9 of 10 features are
-   outside the NASA training range.
-4. **Alerts**: low-voltage and sensor-fault alerts from the simulator; edit thresholds there.
-5. Stop the simulator → after 30 s the device turns *stale* and a *device offline* alert appears.
-6. With hardware: flash the ESP32 → **System** shows the device, its sensor status and origin "Hardware".
+This runs 52 checks of a synthetic workflow through the real API, in a **separate** database
+(`iot/data/simulation.db`): analytic 1000 mAh / 4.000 Wh checks, full and partial discharges, battery switching,
+gaps, duplicates, out-of-order telemetry, tests, isolation and CSV exports. It verifies that the production database is
+unchanged. To view it, start the backend with `BHM_MODE=simulation`; every page then shows a SIMULATION MODE
+banner and simulated profiles are tagged SIMULATED. See [docs/SIMULATION.md](docs/SIMULATION.md).
 
 ## Tests
 
 ```bash
-pytest iot/tests -q                 # backend, ML integration, simulator → API → SQLite
-cd dashboard && npm test            # dashboard render tests (vitest + jsdom)
+pytest iot/tests -q                 # backend: 170 tests, includes the simulation run
+python -m iot.simulation.run        # 52 end-to-end checks
+cd dashboard && npm test            # dashboard: 44 tests (vitest + jsdom)
 cd dashboard && npm run build       # typecheck + production build
 ```
 
 The model tests skip (rather than fail) if `models/*.pkl` have not been generated.
+
+## What is measured, simulated and estimated
+
+| Kind | Where | Meaning |
+|---|---|---|
+| **Measured** | Overview, Quick Tests, Battery Analysis | INA219 / DS18B20 readings and quantities integrated from them (mAh, Wh, EFC). Voltage counts as a cell voltage only once presence is verified by load current or by an operator. |
+| **Simulated** | Only in `BHM_MODE=simulation` | Synthetic data in its own database, always labelled. |
+| **Experimental ML Estimate** | Battery Health Predictions, Overview | Output of the NASA-trained models on a physical battery's discharge cycle, *only* if the cycle is complete, every input lies inside the NASA training range (widened by 10 % of that range) and the cycle count is known. Not validated for these cells. |
+| **Not available** | — | Shown with the reason whenever the gate is not passed. No SoH, RUL or capacity number is ever filled in. |
+
+## Limitations
+
+- **No validated SoH/RUL for BAT-A/B/C.** The models were trained on three NASA 2.0 Ah cells at ~2 A constant current.
+  A 300 s Quick Test is not a complete discharge cycle, so it cannot be fed to the cycle-level models; in practice the
+  physical batteries show **Not available** unless a complete, in-range discharge is recorded.
+- **Quick Tests compare batteries; they do not measure capacity.** Total capacity needs a full, uninterrupted,
+  rested-full-charge → cutoff discharge, which none of the Quick Tests is.
+- **Label ratings** (3000 / 2500 mAh) are manufacturer values, not measurements. EFC uses them only as a normaliser.
+- **No hardware cutoff or protection.** Stopping, aborting or the timer ending changes only the software record.
+- **Single INA219 channel.** Only one battery can be measured at a time; the operator selects which.
+- **Timestamps** over USB come from the PC clock (labelled as such).
+- Firmware compiles in the Arduino IDE on the team's machine; it was not compiled in CI.
 
 ## Machine-learning summary
 
@@ -182,8 +209,12 @@ The model tests skip (rather than fail) if `models/*.pkl` have not been generate
   - three cells only, and B0018 shows the model can fail on a new cell;
   - SoH/EOL defined on the 2.0 Ah scale;
   - `Cycle_number` is an input;
-  - live data from a 10 Ω load is far outside the training range;
-  - nothing has been validated on the team's 3.0 Ah cell.
+  - live data from a small resistive load is far outside the training range;
+  - nothing has been validated on the team's 3000 / 2500 mAh cells.
+- **Policy for physical batteries:** the saved models run only through the gate described above and the result is
+  labelled *Experimental ML Estimate*. The dashboard's model demo applies the same saved models to real NASA dataset
+  cycles (in-sample, shown next to the held-out leave-one-cell-out prediction) and never attaches those values to
+  BAT-A/B/C.
 
   See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) §6.
 

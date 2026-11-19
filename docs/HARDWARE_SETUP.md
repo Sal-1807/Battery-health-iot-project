@@ -98,14 +98,16 @@ The firmware's `BATTERY_ID` is fixed in `config.h` and can't know which cell is 
 
 From the moment of the switch, readings are stored under the selected battery. If no battery is selected, readings go to `UNASSIGNED-<device>` and are never attributed to a profile.
 
-## 3c. Recording a supervised test (Test Manager)
+## 3c. Recording a Quick Test (3 × 300 s per battery)
 
 1. On the **Batteries** page, select the connected cell.
-2. On the **Test Manager** page, create a test and complete the checklist. You'll need the supervisor's name, the cutoff voltage, and the load resistance with its power rating.
-3. Physically connect the load, then press **Start test record**. Pressing the button doesn't connect anything.
-4. Watch the cell voltage and temperature yourself. **Physically disconnect the load** at the agreed cutoff or on any abnormal reading, then press **Complete** or **Abort**.
+2. On the **Quick Tests** page, press **New 5-minute Quick Test** and complete the checklist (supervisor name, cutoff voltage, load resistance and its power rating).
+3. Press **Start recording**, then physically connect the load. Pressing the button doesn't connect anything.
+4. Watch the cell voltage and temperature yourself during the 5 minutes.
+5. At 300 s the software stops *recording* automatically. **This does not disconnect the battery or stop the current.** Physically remove the load, then press **I have physically disconnected the load**. The backend refuses the confirmation while it still measures load current, and the next test cannot start until it is given.
+6. If anything looks abnormal, remove the load immediately; the test is then recorded as incomplete or interrupted and is not counted.
 
-The software never switches the load and has no automatic cutoff. A test only counts for full-capacity analysis if every validity check passes.
+The software never switches the load and has no automatic cutoff. Only complete, gap-free 300 s windows count toward the 3 tests per battery.
 
 ## 3a. Without Wi-Fi: USB serial bridge
 

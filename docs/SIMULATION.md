@@ -56,8 +56,8 @@ Then start the dashboard as usual (`cd dashboard && npm run dev`). A **SIMULATIO
 1. **Separate database.** The runner always writes to `iot/data/simulation.db`, which is reset on each run, and refuses the production path. It also hashes the production database before and after the run and checks that it's unchanged.
 2. **Separate profiles.** Simulation mode seeds `SIM-BAT-A-3000`, `SIM-BAT-B-3000` and `SIM-BAT-C-2500` with `source = simulation`. Ingest refuses to mix sources on one battery, so simulated readings can never be stored under a real profile.
 3. **Simulation mode refuses hardware telemetry** (HTTP 403). A real ESP32 pointed at it cannot mix in.
-4. **Profile views** (Batteries, Aging, Test Manager) show only real profiles in production and only SIM profiles in simulation mode.
-5. **SoH/RUL** stay unavailable for all physical and simulated profiles.
+4. **Profile views** (Batteries, Quick Tests, Battery Analysis) show only real profiles in production and only SIM profiles in simulation mode.
+5. **SoH/RUL:** only a gate-passing Experimental ML Estimate is possible. The simulated loads fall outside the NASA training range, so no estimate is produced in the simulation run (checked in S6).
 
 ## What is simulated
 
@@ -75,7 +75,7 @@ Then start the dashboard as usual (`cd dashboard && npm run dev`). A **SIMULATIO
 | Scenario | Verifies |
 |---|---|
 | S1 analytic (SIM-BAT-A) | 1.000 A × 1 h = **1000 mAh**, 4.0 V × 1.0 A × 1 h = **4.000 Wh**. Dropped readings don't create a gap or assumed current; duplicates are ignored; an out-of-order reading isn't re-integrated. A partial discharge isn't a full cycle. EFC = charge / 3000. Completing the software test claims no hardware action. |
-| S2 realistic full discharges (SIM-BAT-C) | Integrated charge within 1 % of the cell's true coulomb count; full-range classification; 2 completed cycles; EFC = charge / 2500; Test Manager validity; aging retention = run 2 / run 1 (simulated 2 % fade) |
+| S2 realistic full discharges (SIM-BAT-C) | Integrated charge within 1 % of the cell's true coulomb count; full-range classification; 2 completed cycles; EFC = charge / 2500; supervised-test validity; aging retention = run 2 / run 1 (simulated 2 % fade) |
 | S3 partial + battery switch | Partial classification; the B session ends `battery_switched`; post-switch readings go to A; nothing stored under B after the switch |
 | S4 interruptions | A 90 s gap recorded and not filled; a 10 min silence ends the session; DS18B20 dropouts and an INA219 fault counted; aging excludes the session with reasons |
 | S5 software stop (near real time) | After **Complete**, the response says no hardware was controlled, and the measured hardware state still shows load current |

@@ -14,7 +14,7 @@ Legend:
 |---|---|---|
 | 1 | `BHM_MODE=simulation` without `BHM_DB_PATH` fell back to the **production** database and seeded SIM profiles into it | Refuses to start |
 | 2 | A simulation database opened in production mode accepted real ESP32 telemetry (and vice versa) | Each database is bound to its mode (`settings.db_mode`); a mismatch refuses to start. Existing databases are inferred: any hardware reading → production. |
-| 3 | The legacy hardware ID `CELL-18650-01`, where readings went before profiles were used, could receive an "experimental" NASA SoH/RUL | No SoH/RUL for **any** hardware battery |
+| 3 | The legacy hardware ID `CELL-18650-01`, where readings went before profiles were used, could receive an "experimental" NASA SoH/RUL | No SoH/RUL for **any** hardware battery. *Revised for the final submission:* hardware batteries may show only a gate-passing **Experimental ML Estimate**; archived IDs are excluded from the predictions view. |
 | 4 | After a battery switch, the switched-away battery and the legacy ID got permanent false **device_offline** warnings | Offline alerts are evaluated only for the battery the device is currently recording to |
 | 5 | An unselected profile showed **Offline** | New state **Not selected as connected** |
 | 6 | Test Manager said **"no load current measured"** while −0.37 A flowed (reversed INA219 wiring) | Negative current is reported, with a hint to check VIN+/VIN− |
