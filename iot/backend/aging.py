@@ -133,7 +133,23 @@ def battery_aging(conn: sqlite3.Connection, battery: dict, s: Settings) -> dict[
         status = "ok"
         reason = None
 
-    total_mah = sum(x["charge_mah"] for x in sessions)
+    # Overlap guard: sessions of one battery are sequential by construction, but if two
+    # ever overlap in time (e.g. a repaired/imported record) only the first is counted,
+    # so the same charge can never be counted twice. Duplicate telemetry is already
+    # rejected at ingest (device/boot/seq), so it never reaches a session.
+    counted, overlaps, last_end = [], [], None
+    for x in sessions:
+        end = x["end_ms"] if x.get("end_ms") else x["last_on_ms"]
+        if last_end is not None and x["start_ms"] < last_end:
+            overlaps.append(x["id"])
+            x["throughput_excluded"] = "overlaps an earlier session"
+            continue
+        x["throughput_excluded"] = None
+        counted.append(x)
+        last_end = end if last_end is None else max(last_end, end)
+    partial = [x for x in counted if x["full_test_issues"]]
+    full_counted = [x for x in counted if not x["full_test_issues"]]
+    total_mah = sum(x["charge_mah"] for x in counted)
     trends = [{"session_id": x["id"], "start_ts": x["start_ts"], "start_ms": x["start_ms"] if "start_ms" in x else None,
                "mean_temperature_c": x["mean_temperature_c"], "max_temperature_c": x["max_temperature_c"],
                "mean_loaded_voltage_v": x["mean_loaded_voltage_v"], "min_voltage_v": x["min_voltage_v"],
@@ -145,13 +161,33 @@ def battery_aging(conn: sqlite3.Connection, battery: dict, s: Settings) -> dict[
         "source": battery.get("source"),
         "rated_capacity_mah": rated_mah,
         "rated_note": "Manufacturer label rating. Not used as the capacity reference.",
-        "totals": {
-            "n_sessions": len(sessions),
+        "totals": {   # = throughput (kept for compatibility)
+            "n_sessions": len(counted),
             "delivered_mah": total_mah,
-            "delivered_wh": sum(x["energy_wh"] for x in sessions),
-            "discharge_duration_s": sum(x["duration_s"] for x in sessions),
+            "delivered_wh": sum(x["energy_wh"] for x in counted),
+            "discharge_duration_s": sum(x["duration_s"] for x in counted),
             "equivalent_full_cycles": (total_mah / rated_mah) if rated_mah else None,
         },
+        "throughput": {
+            "definition": "Measured discharge throughput: charge and energy measured in ALL discharge sessions of "
+                          "this battery, partial ones included. It is not the battery's capacity.",
+            "total_mah": total_mah,
+            "total_wh": sum(x["energy_wh"] for x in counted),
+            "duration_s": sum(x["duration_s"] for x in counted),
+            "equivalent_full_cycles": (total_mah / rated_mah) if rated_mah else None,
+            "uncertainty_mah": sum(x["uncertainty_mah"] for x in counted),
+            "n_sessions": len(counted),
+            "n_partial_sessions": len(partial),
+            "partial_mah": sum(x["charge_mah"] for x in partial),
+            "partial_wh": sum(x["energy_wh"] for x in partial),
+            "n_full_tests": len(full_counted),
+            "full_mah": sum(x["charge_mah"] for x in full_counted),
+            "in_progress_mah": sum(x["charge_mah"] for x in counted if x["status"] == "active"),
+            "sessions_with_gaps": sum(1 for x in counted if x["n_gaps"]),
+            "overlapping_sessions_excluded": overlaps,
+        },
+        "full_capacity_definition": "Measured full capacity: only from full tests (rested full charge to the cutoff, "
+                                    "uninterrupted, gap-free). Partial sessions never count here.",
         "n_full_tests": len(full),
         "n_comparable_tests": len(comparable),
         "reference": None if ref is None else {
@@ -172,6 +208,9 @@ def battery_aging(conn: sqlite3.Connection, battery: dict, s: Settings) -> dict[
             "duration_s": x["duration_s"], "mean_current_a": x["mean_current_a"], "c_rate": x["c_rate"],
             "mean_temperature_c": x["mean_temperature_c"], "mean_loaded_voltage_v": x["mean_loaded_voltage_v"],
             "full_test": not x["full_test_issues"], "full_test_issues": x["full_test_issues"],
+            "n_gaps": x["n_gaps"], "uncertainty_mah": x["uncertainty_mah"],
+            "counted_in_throughput": x["throughput_excluded"] is None,
+            "throughput_excluded": x["throughput_excluded"],
             "comparable": x.get("comparable", False), "comparability_issues": x.get("comparability_issues", []),
             "is_reference": ref is not None and x["id"] == ref["id"],
         } for x in sessions],

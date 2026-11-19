@@ -21,8 +21,8 @@ function Insufficient({ reason }: { reason: string | null }) {
 function Comparison({ rows, onPick }: { rows: AgingT[]; onPick: (b: Bat) => void }) {
   return (
     <Table
-      head={["Battery", "Rated (label)", "Sessions", "Delivered", "Energy", "Discharge time", "EFC", "Full tests",
-             "Comparable", "Reference capacity", "Retention", "RUL"]}
+      head={["Battery", "Rated (label)", "Sessions (partial / full)", "Throughput", "of which partial", "Energy",
+             "Discharge time", "EFC (throughput ÷ rating)", "Measured full capacity", "Retention", "RUL"]}
     >
       {rows.map((a) => (
         <tr key={a.battery_id}>
@@ -33,13 +33,14 @@ function Comparison({ rows, onPick }: { rows: AgingT[]; onPick: (b: Bat) => void
             {a.source === "simulation" && <span className="ml-2"><Pill tone="warning">SIMULATED</Pill></span>}
           </td>
           <td className="px-3 py-2">{fmt(a.rated_capacity_mah, 0)} mAh</td>
-          <td className="px-3 py-2">{a.totals.n_sessions}</td>
+          <td className="px-3 py-2">
+            {a.totals.n_sessions} ({a.throughput?.n_partial_sessions ?? 0} / {a.throughput?.n_full_tests ?? a.n_full_tests})
+          </td>
           <td className="px-3 py-2">{fmt(a.totals.delivered_mah, 1)} mAh</td>
+          <td className="px-3 py-2">{fmt(a.throughput?.partial_mah, 1)} mAh</td>
           <td className="px-3 py-2">{fmt(a.totals.delivered_wh, 3)} Wh</td>
           <td className="px-3 py-2">{fmtDuration(a.totals.discharge_duration_s)}</td>
           <td className="px-3 py-2">{fmt(a.totals.equivalent_full_cycles, 3)}</td>
-          <td className="px-3 py-2">{a.n_full_tests}</td>
-          <td className="px-3 py-2">{a.n_comparable_tests}</td>
           <td className="px-3 py-2">
             {a.reference ? (
               <>
@@ -69,6 +70,10 @@ function Detail({ id }: { id: Bat }) {
     () => (a?.capacity_series ?? []).map((x) => ({ cycle: x.index, capacity: x.capacity_mah, retention: x.retention_pct })),
     [a],
   );
+  const sessData = useMemo(
+    () => (a?.sessions ?? []).filter((x) => x.counted_in_throughput !== false).map((x, i) => ({ cycle: i + 1, charge: x.charge_mah })),
+    [a],
+  );
   const trend = useMemo(
     () =>
       (a?.trends ?? []).map((t) => ({
@@ -85,9 +90,17 @@ function Detail({ id }: { id: Bat }) {
 
   return (
     <div className="space-y-4">
+      <h3 className="text-sm font-semibold text-ink">
+        Measured discharge throughput <span className="font-normal text-ink-3">— all sessions, partial ones included. Not the battery's capacity.</span>
+      </h3>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile label="Delivered capacity" value={fmt(a.totals.delivered_mah, 1)} unit="mAh" foot={`${a.totals.n_sessions} measured sessions`} />
-        <StatTile label="Delivered energy" value={fmt(a.totals.delivered_wh, 3)} unit="Wh" />
+        <StatTile
+          label="Discharge throughput"
+          value={fmt(a.totals.delivered_mah, 1)}
+          unit="mAh"
+          foot={`${a.throughput?.n_partial_sessions ?? 0} partial (${fmt(a.throughput?.partial_mah, 1)} mAh) + ${a.throughput?.n_full_tests ?? 0} full (${fmt(a.throughput?.full_mah, 1)} mAh)`}
+        />
+        <StatTile label="Energy throughput" value={fmt(a.totals.delivered_wh, 3)} unit="Wh" />
         <StatTile label="Discharge duration" value={fmtDuration(a.totals.discharge_duration_s)} foot="total time under load" />
         <StatTile
           label="Equivalent full cycles"
@@ -95,10 +108,26 @@ function Detail({ id }: { id: Bat }) {
           foot={`delivered ÷ ${fmt(a.rated_capacity_mah, 0)} mAh label rating`}
         />
       </div>
+      <Card title="Discharge-session history (mAh per session)" subtitle="Every measured session, partial and full. Partial sessions add to throughput and EFC only.">
+        {sessData.length === 0 ? (
+          <EmptyState title="No discharge sessions recorded" />
+        ) : (
+          <CycleChart data={sessData} unit="mAh" series={[{ key: "charge", label: "Session discharge", color: S1, digits: 1, dots: true }]} />
+        )}
+        {(a.throughput?.overlapping_sessions_excluded.length ?? 0) > 0 && (
+          <p className="mt-2 text-xs text-warning">
+            {a.throughput!.overlapping_sessions_excluded.length} overlapping session record(s) excluded so no charge is counted twice.
+          </p>
+        )}
+      </Card>
+
+      <h3 className="pt-2 text-sm font-semibold text-ink">
+        Measured full capacity <span className="font-normal text-ink-3">— full tests only (rested full charge → cutoff, uninterrupted, gap-free)</span>
+      </h3>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card
-          title="Measured capacity per comparable full test (mAh)"
+          title="Measured full capacity per comparable full test (mAh)"
           subtitle={a.reference ? `Reference: test #1, ${fmtTime(a.reference.start_ts, true)}, ${fmt(a.reference.mean_current_a, 3)} A, ${fmt(a.reference.mean_temperature_c, 1)} °C` : undefined}
         >
           {a.capacity_series.length === 0 ? (
@@ -130,7 +159,7 @@ function Detail({ id }: { id: Bat }) {
       </div>
 
       <Card title="Sessions and why they are (not) used" subtitle="Only full, uninterrupted, gap-free and comparable tests enter capacity and retention">
-        <Table empty={!a.sessions?.length} head={["Start", "Charge", "Duration", "Avg I", "C-rate", "Mean T", "Used for capacity", "Why not"]}>
+        <Table empty={!a.sessions?.length} head={["Start", "Charge", "Duration", "Avg I", "C-rate", "Mean T", "Type", "In throughput", "Used for full capacity", "Why not"]}>
           {(a.sessions ?? []).map((x) => (
             <tr key={x.session_id}>
               <td className="px-3 py-1.5">{fmtTime(x.start_ts, true)}</td>
@@ -139,6 +168,10 @@ function Detail({ id }: { id: Bat }) {
               <td className="px-3 py-1.5">{fmt(x.mean_current_a, 3)} A</td>
               <td className="px-3 py-1.5">{fmt(x.c_rate, 2)} C</td>
               <td className="px-3 py-1.5">{fmt(x.mean_temperature_c, 1)} °C</td>
+              <td className="px-3 py-1.5">{x.full_test ? "full test" : "partial"}</td>
+              <td className="px-3 py-1.5">
+                {x.counted_in_throughput === false ? <Pill tone="warning">no (overlap)</Pill> : <Pill tone="good">yes</Pill>}
+              </td>
               <td className="px-3 py-1.5">
                 {x.comparable ? <Pill tone="good">{x.is_reference ? "yes (reference)" : "yes"}</Pill> : <Pill tone="neutral">no</Pill>}
               </td>

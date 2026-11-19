@@ -281,3 +281,9 @@ How the evaluation models are built:
 - at least 30 readings.
 
 A completed test that didn't reach the cutoff is classified as `partial discharge (not a full cycle)`. SoH and RUL are always `unavailable`.
+
+**Throughput vs full capacity** (`/api/aging`, `/api/aging/{id}`):
+
+- `throughput` is the **measured discharge throughput**: charge, energy and time from *all* sessions, partial ones included. It reports the partial and full contributions separately and gives EFC = throughput ÷ the battery's own rating. It is not the battery's capacity.
+- A session overlapping an earlier one in time is excluded and listed in `overlapping_sessions_excluded`, so charge is never counted twice. Duplicate telemetry is already rejected at ingest.
+- **Measured full capacity**, retention and completed cycles still come only from full tests. Thresholds are unchanged: 4.15 V rested start, 3.0 V default cutoff.

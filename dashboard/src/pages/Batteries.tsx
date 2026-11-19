@@ -148,7 +148,7 @@ export default function Batteries({ selectBattery }: { selectBattery: (id: strin
           <EmptyState title="No battery profiles" />
         ) : (
           <Table
-            head={["Battery", "Rated", "Connected", "Presence", "Sessions", "Discharged (mAh)", "Energy (Wh)", "EFC",
+            head={["Battery", "Rated", "Connected", "Presence", "Sessions", "Throughput (mAh)", "Energy (Wh)", "EFC",
                    "Completed cycles", "Latest capacity meas.", "SoH / RUL", ""]}
           >
             {rows.map((r) => {

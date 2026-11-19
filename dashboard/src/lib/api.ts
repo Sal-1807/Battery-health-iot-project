@@ -409,6 +409,7 @@ export interface AgingSession {
   charge_mah: number; energy_wh: number; duration_s: number; mean_current_a: number | null; c_rate: number | null;
   mean_temperature_c: number | null; mean_loaded_voltage_v: number | null;
   full_test: boolean; full_test_issues: string[]; comparable: boolean; comparability_issues: string[]; is_reference: boolean;
+  n_gaps?: number; uncertainty_mah?: number; counted_in_throughput?: boolean; throughput_excluded?: string | null;
 }
 export interface Aging {
   battery_id: string;
@@ -418,6 +419,13 @@ export interface Aging {
   rated_note: string;
   totals: { n_sessions: number; delivered_mah: number; delivered_wh: number; discharge_duration_s: number;
             equivalent_full_cycles: number | null };
+  throughput?: {
+    definition: string; total_mah: number; total_wh: number; duration_s: number; equivalent_full_cycles: number | null;
+    uncertainty_mah: number; n_sessions: number; n_partial_sessions: number; partial_mah: number; partial_wh: number;
+    n_full_tests: number; full_mah: number; in_progress_mah: number; sessions_with_gaps: number;
+    overlapping_sessions_excluded: number[];
+  };
+  full_capacity_definition?: string;
   n_full_tests: number;
   n_comparable_tests: number;
   reference: { session_id: number; start_ts: string; capacity_mah: number; mean_current_a: number | null;

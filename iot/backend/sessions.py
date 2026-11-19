@@ -224,6 +224,19 @@ def session_out(row: Optional[sqlite3.Row | dict], s: Settings, cutoff_v: Option
     return d
 
 
+def non_overlapping(sessions: list[dict]) -> list[dict]:
+    """Drop any session that overlaps an earlier one in time, so charge is never counted twice
+    (same rule as aging.py)."""
+    out, last_end = [], None
+    for x in sorted(sessions, key=lambda x: (x["start_ms"], x["id"])):
+        end = x["end_ms"] if x.get("end_ms") else x["last_on_ms"]
+        if last_end is not None and x["start_ms"] < last_end:
+            continue
+        out.append(x)
+        last_end = end if last_end is None else max(last_end, end)
+    return out
+
+
 def battery_stats(conn: sqlite3.Connection, battery: dict, s: Settings) -> dict:
     """Per-battery totals from measured sessions.
 
@@ -240,7 +253,7 @@ def battery_stats(conn: sqlite3.Connection, battery: dict, s: Settings) -> dict:
     rows = conn.execute(f"SELECT {SESSION_COLS} FROM discharge_sessions WHERE battery_id=? ORDER BY id",
                         (battery["battery_id"],)).fetchall()
     rated = battery.get("rated_capacity_ah")
-    out = [session_out(r, s, battery.get("cutoff_voltage_v"), rated) for r in rows]
+    out = non_overlapping([session_out(r, s, battery.get("cutoff_voltage_v"), rated) for r in rows])
     total = sum(x["charge_mah"] for x in out)
     full = [x for x in out if x["kind"] == "full_range_unvalidated"]
     return {
